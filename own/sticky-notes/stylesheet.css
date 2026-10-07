@@ -6,7 +6,7 @@
 .sticky-entry { background: transparent; border: none; box-shadow: none; padding: 6px 10px; margin: 0; color: #2b2b2b; caret-color: #2b2b2b; selection-background-color: rgba(0,0,0,0.2); font-size: 13px; }
 .sticky-entry:focus { background: transparent; border: none; box-shadow: none; }
 /* equal gap to the right and bottom edges of the note */
-.sticky-grip { margin: 0 4px 4px 0; }
+.sticky-grip { margin: 0 3px 3px 0; }
 .sticky-preview { font-size: 11px; color: rgba(0,0,0,0.65); padding: 0 4px; }
 .sticky-tooltip { background-color: rgba(30,30,30,0.95); color: white; border-radius: 6px; padding: 3px 8px; font-size: 11px; }
 

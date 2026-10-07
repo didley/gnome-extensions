@@ -125,7 +125,7 @@ export class Note {
         // so the gaps to the note's edges are equal (a text glyph isn't).
         this._grip = new St.Icon({
             gicon: Gio.FileIcon.new(Gio.File.new_for_path(`${this._manager.path}/icons/grip.svg`)),
-            icon_size: 12,
+            icon_size: 8,
             style_class: 'sticky-grip',
             reactive: true,
         });
