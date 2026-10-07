@@ -39,7 +39,6 @@ export default class StickyNotesExtension extends Extension {
             return Clutter.EVENT_STOP;
         });
         this._button.menu.connect('open-state-changed', (menu, open) => {
-            console.log('[StickyDBG] menu open-state ' + open);
             if (open) this._rebuildMenu();
         });
         Main.panel.addToStatusArea(this.uuid, this._button, 0, 'right');
@@ -118,7 +117,8 @@ export default class StickyNotesExtension extends Extension {
             this.newNote();
             return;
         }
-        console.log('[StickyDBG] panel click -> menu toggle');
+        // PopupMenu refuses to open while empty, so fill it before toggling
+        this._rebuildMenu();
         this._button.menu.toggle();
     }
 
@@ -137,7 +137,7 @@ export default class StickyNotesExtension extends Extension {
                 const item = new PopupMenu.PopupMenuItem(note.title);
                 // dot = minimized (click to restore); no dot = on screen (click to bring forward)
                 item.setOrnament(note.isMinimized ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NONE);
-                item.connect('activate', () => { console.log('[StickyDBG] menu restore ' + note.title); note.restore(); });
+                item.connect('activate', () => note.restore());
                 menu.addMenuItem(item);
             }
             menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
