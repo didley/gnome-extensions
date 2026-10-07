@@ -8,3 +8,9 @@
 .sticky-grip { font-size: 12px; color: rgba(0,0,0,0.35); padding: 0 2px; }
 .sticky-preview { font-size: 11px; color: rgba(0,0,0,0.65); padding: 0 4px; }
 .sticky-tooltip { background-color: rgba(30,30,30,0.95); color: white; border-radius: 6px; padding: 3px 8px; font-size: 11px; }
+
+.sticky-menu { background-color: rgba(38,38,38,0.98); border-radius: 10px; padding: 6px; min-width: 150px; box-shadow: 0 4px 14px rgba(0,0,0,0.5); }
+.sticky-menu-item { color: white; padding: 5px 12px; border-radius: 6px; text-align: left; }
+.sticky-menu-item:hover { background-color: rgba(255,255,255,0.14); }
+.sticky-menu-item.disabled { color: rgba(255,255,255,0.35); }
+.sticky-menu-sep { height: 1px; background-color: rgba(255,255,255,0.14); margin: 4px 6px; }

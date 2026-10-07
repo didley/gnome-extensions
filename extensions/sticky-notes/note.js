@@ -150,8 +150,8 @@ export class Note {
         });
         text.connect('captured-event', (actor, event) => {
             if (event.type() !== Clutter.EventType.KEY_PRESS) return Clutter.EVENT_PROPAGATE;
-            if (this._textMenu?.isOpen && event.get_key_symbol() === Clutter.KEY_Escape) {
-                this._textMenu.close();
+            if (this.textMenuOpen && event.get_key_symbol() === Clutter.KEY_Escape) {
+                this._closeTextMenu();
                 return Clutter.EVENT_STOP;
             }
             const state = event.get_state();
@@ -526,47 +526,74 @@ export class Note {
         this._applyText(this._redoStack.pop());
     }
 
-    /** Right-click menu for the text body. */
+    /**
+     * Right-click menu for the text body. A custom menu rather than PopupMenu:
+     * PopupMenu moves key focus to itself, and Clutter.Text only paints its
+     * selection while it has focus, so the highlight would vanish. This one
+     * grabs the pointer but hands key focus to the text.
+     */
     _openTextMenu(x, y) {
-        if (!this._textMenu) {
-            this._anchor = new St.Widget({width: 1, height: 1});
-            Main.uiGroup.add_child(this._anchor);
-            this._textMenu = new PopupMenu.PopupMenu(this._anchor, 0.0, St.Side.TOP);
-            this._textMenu.actor.add_style_class_name('app-well-menu');
-            Main.uiGroup.add_child(this._textMenu.actor);
-            this._textMenu.actor.hide();
-            this._textMenuManager = new PopupMenu.PopupMenuManager(this._anchor);
-            this._textMenuManager.addMenu(this._textMenu);
-            this._textMenu.connect('open-state-changed', (m, open) => {
-                if (!open) this._entry.grab_key_focus();
-            });
-        }
-        this._anchor.set_position(Math.round(x), Math.round(y));
-        const menu = this._textMenu;
-        menu.removeAll();
+        this._closeTextMenu();
+        const box = new St.BoxLayout({
+            style_class: 'sticky-menu',
+            orientation: Clutter.Orientation.VERTICAL,
+            reactive: true,
+        });
         const hasSel = !!this._entry.get_selection();
         const item = (label, fn, enabled = true) => {
-            const it = new PopupMenu.PopupMenuItem(label);
-            it.setSensitive(enabled);
-            it.connect('activate', fn);
-            menu.addMenuItem(it);
+            const b = new St.Button({
+                style_class: 'sticky-menu-item',
+                can_focus: false,
+                reactive: enabled,
+                x_align: Clutter.ActorAlign.FILL,
+                child: new St.Label({text: label}),
+            });
+            if (!enabled) b.add_style_class_name('disabled');
+            b.connect('clicked', () => {
+                this._closeTextMenu();
+                fn();
+            });
+            box.add_child(b);
         };
+        const sep = () => box.add_child(new St.Widget({style_class: 'sticky-menu-sep'}));
         item('Undo', () => this.undo(), this._undoStack.length > 0);
         item('Redo', () => this.redo(), this._redoStack.length > 0);
-        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        sep();
         item('Cut', () => this.cut(), hasSel);
         item('Copy', () => this.copy(), hasSel);
         item('Paste', () => this.paste());
-        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        sep();
         item('Select All', () => this.selectAll(), (this._entry.get_text() ?? '') !== '');
-        menu.open();
-        // Clutter.Text only paints its selection while it has key focus, and the
-        // menu takes focus when it opens. Give it straight back (the mouse still
-        // drives the menu; Escape is handled in the key handler).
-        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
-            if (menu.isOpen) this._entry.grab_key_focus();
-            return GLib.SOURCE_REMOVE;
+
+        Main.uiGroup.add_child(box);
+        const m = Main.layoutManager.primaryMonitor;
+        const [, natW] = box.get_preferred_width(-1);
+        const [, natH] = box.get_preferred_height(-1);
+        box.set_position(
+            Math.round(Math.min(x, m.x + m.width - natW - 4)),
+            Math.round(Math.min(y, m.y + m.height - natH - 4)));
+        this._textMenuBox = box;
+        this._textMenuGrab = new GrabHelper.GrabHelper(box);
+        this._textMenuGrab.grab({
+            actor: box,
+            focus: this._entry, // keep key focus in the text so the selection stays painted
+            onUngrab: () => this._closeTextMenu(),
         });
+        this._entry.grab_key_focus();
+    }
+
+    get textMenuOpen() {
+        return !!this._textMenuBox;
+    }
+
+    _closeTextMenu() {
+        const box = this._textMenuBox;
+        if (!box) return;
+        this._textMenuBox = null;
+        try { this._textMenuGrab?.ungrab({actor: box}); } catch (e) { /* already ungrabbed */ }
+        this._textMenuGrab = null;
+        box.destroy();
+        this._entry.grab_key_focus();
     }
 
     // Context menu -------------------------------------------------------------------
@@ -612,8 +639,7 @@ export class Note {
         safe(() => this._tipHiders?.forEach(h => h()));
         safe(() => this._grabHelper?.ungrab({actor: this.actor}));
         safe(() => this._menu?.destroy());
-        safe(() => this._textMenu?.destroy());
-        safe(() => this._anchor?.destroy());
+        safe(() => this._closeTextMenu());
         this._menu = null;
         safe(() => this._removeFromLayer());
         safe(() => this.actor.destroy());
