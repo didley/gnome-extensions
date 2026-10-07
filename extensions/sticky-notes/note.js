@@ -545,8 +545,13 @@ export class Note {
                 style_class: 'sticky-menu-item',
                 can_focus: false,
                 reactive: enabled,
+                x_expand: true,
                 x_align: Clutter.ActorAlign.FILL,
-                child: new St.Label({text: label}),
+                child: new St.Label({
+                    text: label,
+                    x_expand: true,
+                    x_align: Clutter.ActorAlign.START,
+                }),
             });
             if (!enabled) b.add_style_class_name('disabled');
             b.connect('clicked', () => {
