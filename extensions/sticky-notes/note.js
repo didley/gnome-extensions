@@ -3,6 +3,7 @@ import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Pango from 'gi://Pango';
 import Cogl from 'gi://Cogl';
+import Meta from 'gi://Meta';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js';
@@ -49,6 +50,7 @@ export class Note {
     _build() {
         const d = this.data;
         this.actor = new St.BoxLayout({
+            name: 'sticky-note-actor',
             style_class: 'sticky-note',
             orientation: Clutter.Orientation.VERTICAL,
             reactive: true,
@@ -63,7 +65,12 @@ export class Note {
         });
         this._closeBtn = this._makeButton('window-close-symbolic', () => this.requestDelete());
         this._plusBtn = this._makeButton('list-add-symbolic', () => this._manager.newNote(this));
+        this._colorBtn = this._makeButton('color-select-symbolic', () => this.cycleColor());
         this._pinBtn = this._makeButton('view-pin-symbolic', () => this.setPinned(!this.data.pinned));
+        this._tooltip(this._closeBtn, () => 'Delete note');
+        this._tooltip(this._colorBtn, () => `Change color (${this.data.color})`);
+        this._tooltip(this._pinBtn, () => `Float on top: ${this.data.pinned ? 'on' : 'off'}`);
+        this._tooltip(this._plusBtn, () => 'New note');
         this._preview = new St.Label({
             style_class: 'sticky-preview',
             x_expand: true,
@@ -73,6 +80,7 @@ export class Note {
         this._preview.clutter_text.set_single_line_mode(true);
         this._header.add_child(this._closeBtn);
         this._header.add_child(this._preview);
+        this._header.add_child(this._colorBtn);
         this._header.add_child(this._pinBtn);
         this._header.add_child(this._plusBtn);
         this._header.connect('captured-event', this._onHeaderEvent.bind(this));
@@ -131,6 +139,10 @@ export class Note {
         this._footer.add_child(new St.Widget({x_expand: true}));
         this._grip = new St.Label({text: '\u25e2', style_class: 'sticky-grip', reactive: true});
         this._grip.connect('captured-event', this._onGripEvent.bind(this));
+        this._grip.connect('notify::hover', () => {
+            if (this._stageId) return; // keep the resize cursor while dragging
+            this._setCursor(this._grip.hover ? Meta.Cursor.SE_RESIZE : Meta.Cursor.DEFAULT);
+        });
         this._footer.add_child(this._grip);
         this.actor.add_child(this._footer);
 
@@ -173,6 +185,7 @@ export class Note {
         this._plusBtn.opacity = show ? 255 : 0;
         // pin shows its state: bright = floating on top, dim = on the desktop
         this._pinBtn.opacity = show ? (this.data.pinned ? 255 : 110) : 0;
+        this._colorBtn.opacity = show ? 255 : 0;
     }
 
     // Style / state ------------------------------------------------------------
@@ -197,6 +210,39 @@ export class Note {
         this.data.color = name;
         this._applyColor();
         this._manager.changed();
+    }
+
+    cycleColor() {
+        const names = Object.keys(COLORS);
+        const i = names.indexOf(this.data.color);
+        this.setColor(names[(i + 1) % names.length]);
+    }
+
+    // Tooltips: St has none built in, so show a small label after a short hover.
+    _tooltip(widget, getText) {
+        let timeout = 0;
+        const hide = () => {
+            if (timeout) { GLib.source_remove(timeout); timeout = 0; }
+            this._tip?.destroy();
+            this._tip = null;
+        };
+        widget.connect('notify::hover', () => {
+            hide();
+            if (!widget.hover) return;
+            timeout = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 450, () => {
+                timeout = 0;
+                this._tip = new St.Label({text: getText(), style_class: 'sticky-tooltip'});
+                Main.uiGroup.add_child(this._tip);
+                const [x, y] = widget.get_transformed_position();
+                const m = Main.layoutManager.primaryMonitor;
+                const tx = Math.min(Math.max(m.x, x + widget.width / 2 - this._tip.width / 2),
+                    m.x + m.width - this._tip.width);
+                this._tip.set_position(Math.round(tx), Math.round(y + widget.height + 4));
+                return GLib.SOURCE_REMOVE;
+            });
+        });
+        widget.connect('destroy', hide);
+        this._tipHiders = (this._tipHiders ?? []).concat(hide);
     }
 
     toggleCollapsed() {
@@ -245,7 +291,7 @@ export class Note {
     _isOnButton(event) {
         const src = global.stage.get_event_actor(event);
         if (!src) return false;
-        return [this._closeBtn, this._pinBtn, this._plusBtn].some(b => src === b || b.contains(src));
+        return [this._closeBtn, this._colorBtn, this._pinBtn, this._plusBtn].some(b => src === b || b.contains(src));
     }
 
     _onHeaderEvent(actor, event) {
@@ -297,6 +343,7 @@ export class Note {
         const startW = this.actor.width;
         const startH = this.actor.height;
         const [px, py] = event.get_coords();
+        this._setCursor(Meta.Cursor.SE_RESIZE);
         this._beginDrag(px, py, (dx, dy) => {
             this.data.w = Math.round(Math.max(MIN_W, startW + dx));
             this.data.h = Math.round(Math.max(MIN_H, startH + dy));
@@ -330,8 +377,13 @@ export class Note {
         });
     }
 
+    _setCursor(cursor) {
+        try { global.display.set_cursor(cursor); } catch (e) { console.error(`[Sticky Notes] cursor: ${e}`); }
+    }
+
     _endDrag() {
         if (this._stageId) {
+            if (!this._grip.hover) this._setCursor(Meta.Cursor.DEFAULT);
             global.stage.disconnect(this._stageId);
             this._stageId = 0;
             const cb = this._dragEnd;
@@ -410,6 +462,8 @@ export class Note {
 
     destroy() {
         this._endDrag();
+        this._setCursor(Meta.Cursor.DEFAULT);
+        this._tipHiders?.forEach(h => h());
         this._grabHelper?.ungrab({actor: this.actor});
         this._menu?.destroy();
         this._menu = null;

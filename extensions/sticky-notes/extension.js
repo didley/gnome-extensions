@@ -13,6 +13,7 @@ export default class StickyNotesExtension extends Extension {
         // Notes live in ~/.local/share/<uuid>/notes.json
         const baseUuid = this.uuid;
         this._store = new Store(GLib.build_filenamev([GLib.get_user_data_dir(), baseUuid]));
+        this._sweepStale();
         this._notes = [];
         this._visible = true;
         this._nextId = 1;
@@ -48,6 +49,17 @@ export default class StickyNotesExtension extends Extension {
         this._button?.destroy();
         this._button = null;
         this._store = null;
+    }
+
+    // After a hot reload a previous instance may have left note actors behind.
+    _sweepStale() {
+        for (const group of [Main.layoutManager.uiGroup, Main.layoutManager._backgroundGroup]) {
+            for (const child of group.get_children()) {
+                if (child.name !== 'sticky-note-actor' && !child.has_style_class_name?.('sticky-note')) continue;
+                try { Main.layoutManager.removeChrome(child); } catch (e) { /* not chrome */ }
+                try { child.destroy(); } catch (e) { /* already gone */ }
+            }
+        }
     }
 
     // Manager API used by notes -------------------------------------------------
