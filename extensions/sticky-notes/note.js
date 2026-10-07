@@ -2,8 +2,10 @@ import Clutter from 'gi://Clutter';
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Pango from 'gi://Pango';
+import Cogl from 'gi://Cogl';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js';
 import * as GrabHelper from 'resource:///org/gnome/shell/ui/grabHelper.js';
 
 const HEADER_H = 22;
@@ -36,7 +38,12 @@ export class Note {
         this._applyColor();
         this._applyCollapsed();
         this.actor.set_position(data.x, data.y);
-        this._putInLayer();
+        try {
+            this._putInLayer();
+        } catch (err) {
+            this.destroy();
+            throw err;
+        }
     }
 
     _build() {
@@ -54,7 +61,7 @@ export class Note {
             reactive: true,
             x_expand: true,
         });
-        this._closeBtn = this._makeButton('window-close-symbolic', () => this._manager.deleteNote(this));
+        this._closeBtn = this._makeButton('window-close-symbolic', () => this.requestDelete());
         this._plusBtn = this._makeButton('list-add-symbolic', () => this._manager.newNote(this));
         this._pinBtn = this._makeButton('view-pin-symbolic', () => this.setPinned(!this.data.pinned));
         this._preview = new St.Label({
@@ -79,27 +86,43 @@ export class Note {
             overlay_scrollbars: true,
             clip_to_allocation: true,
         });
-        this._entry = new St.Entry({
-            style_class: 'sticky-entry',
-            can_focus: true,
+        // A bare Clutter.Text (not St.Entry): it fills the whole note and draws
+        // from the top, whereas St.Entry centres its text vertically.
+        const text = new Clutter.Text({
+            editable: true,
+            reactive: true,
+            selectable: true,
+            single_line_mode: false,
+            activatable: false,
+            line_wrap: true,
+            line_wrap_mode: Pango.WrapMode.WORD_CHAR,
+            font_name: 'Sans 13',
             x_expand: true,
-            y_expand: false,
-            y_align: Clutter.ActorAlign.START,
-            hint_text: '',
+            y_expand: true,
+            x_align: Clutter.ActorAlign.FILL,
+            y_align: Clutter.ActorAlign.FILL,
         });
-        const text = this._entry.get_clutter_text();
-        text.set_single_line_mode(false);
-        text.set_activatable(false);
-        text.set_line_wrap(true);
-        text.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR);
+        const rgba = (r, g, b, a) => {
+            const c = new Cogl.Color();
+            c.init_from_4f(r, g, b, a);
+            return c;
+        };
+        text.color = rgba(0.17, 0.17, 0.17, 1);
+        text.cursor_color = rgba(0.17, 0.17, 0.17, 1);
+        text.selection_color = rgba(0, 0, 0, 0.2);
         text.set_text(d.text ?? '');
         text.connect('text-changed', () => {
             this.data.text = text.get_text();
             this._updatePreview();
             this._manager.changed();
         });
-        const entryBox = new St.BoxLayout({x_expand: true, y_expand: true, y_align: Clutter.ActorAlign.START});
-        entryBox.add_child(this._entry);
+        this._entry = text;
+        const entryBox = new St.BoxLayout({
+            x_expand: true,
+            y_expand: true,
+            style: 'padding: 6px 10px;',
+        });
+        entryBox.add_child(text);
         this._body.set_child(entryBox);
         this.actor.add_child(this._body);
 
@@ -194,7 +217,7 @@ export class Note {
     _putInLayer() {
         if (this._layer) return;
         if (this.data.pinned) {
-            Main.layoutManager.addChrome(this.actor, {affectsInputRegion: true});
+            Main.layoutManager.addChrome(this.actor);
             this._layer = 'chrome';
         } else {
             Main.layoutManager._backgroundGroup.add_child(this.actor);
@@ -317,6 +340,33 @@ export class Note {
         }
     }
 
+    /** Ask before deleting a note that has content; empty notes go straight away. */
+    requestDelete() {
+        if ((this.data.text ?? '').trim() === '') {
+            this._manager.deleteNote(this);
+            return;
+        }
+        const dialog = new ModalDialog.ModalDialog({destroyOnClose: true});
+        dialog.contentLayout.add_child(new St.Label({
+            text: 'Delete this note?\nThis can\u2019t be undone.',
+            style: 'text-align: center; font-size: 13px; padding: 8px 12px;',
+        }));
+        dialog.addButton({
+            label: 'Cancel',
+            action: () => dialog.close(),
+            key: Clutter.KEY_Escape,
+        });
+        dialog.addButton({
+            label: 'Delete',
+            action: () => {
+                dialog.close();
+                this._manager.deleteNote(this);
+            },
+            default: true,
+        });
+        dialog.open();
+    }
+
     // Context menu -------------------------------------------------------------------
 
     _openMenu() {
@@ -352,7 +402,7 @@ export class Note {
 
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         const del = new PopupMenu.PopupMenuItem('Delete note');
-        del.connect('activate', () => this._manager.deleteNote(this));
+        del.connect('activate', () => this.requestDelete());
         menu.addMenuItem(del);
 
         menu.open();

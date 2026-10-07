@@ -41,7 +41,9 @@ export default class StickyNotesExtension extends Extension {
 
     disable() {
         this._store?.flush();
-        for (const n of this._notes) n.destroy();
+        for (const n of this._notes ?? []) {
+            try { n.destroy(); } catch (err) { console.error(`[Sticky Notes] destroy: ${err}`); }
+        }
         this._notes = [];
         this._button?.destroy();
         this._button = null;
@@ -51,7 +53,7 @@ export default class StickyNotesExtension extends Extension {
     // Manager API used by notes -------------------------------------------------
 
     changed() {
-        this._store.schedule(() => this._notes.map(n => n.data));
+        this._store?.schedule(() => this._notes.map(n => n.data));
     }
 
     newNote(from = null) {
