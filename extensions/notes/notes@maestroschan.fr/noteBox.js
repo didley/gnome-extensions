@@ -172,13 +172,8 @@ var NoteBox = class NoteBox {
 			'list-add-symbolic',
 			_("New")
 		);
-		btnNew.actor.connect('button-press-event', (actor, event) => {
-			// Only handle left mouse button (button 1)
-			if (event.get_button() === 1) {
-				this._createNote();
-				return true; // Stop event propagation
-			}
-			return false;
+		btnNew.actor.connect('clicked', () => {
+			this._createNote();
 		});
 		this._buttonsBox.add_child(btnNew.actor);
 		this._btnNew = btnNew.actor;
@@ -189,13 +184,8 @@ var NoteBox = class NoteBox {
 			'document-edit-symbolic',
 			_("Edit")
 		);
-		btnEdit.actor.connect('button-press-event', (actor, event) => {
-			// Only handle left mouse button (button 1)
-			if (event.get_button() === 1) {
-				this._toggleEditMode();
-				return true; // Stop event propagation
-			}
-			return false;
+		btnEdit.actor.connect('clicked', () => {
+			this._toggleEditMode();
 		});
 		this._buttonsBox.add_child(btnEdit.actor);
 		this._btnEdit = btnEdit.actor;
@@ -206,13 +196,8 @@ var NoteBox = class NoteBox {
 			'user-trash-symbolic',
 			_("Delete")
 		);
-		btnDelete.actor.connect('button-press-event', (actor, event) => {
-			// Only handle left mouse button (button 1)
-			if (event.get_button() === 1) {
-				this._openDeleteDialog();
-				return true; // Stop event propagation
-			}
-			return false;
+		btnDelete.actor.connect('clicked', () => {
+			this._openDeleteDialog();
 		});
 		this._buttonsBox.add_child(btnDelete.actor);
 		this._btnDelete = btnDelete.actor;

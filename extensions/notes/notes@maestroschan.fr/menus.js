@@ -292,7 +292,7 @@ var NoteRoundButton = class NoteRoundButton {
 			// after 3.33, the constructor uses directly the parameter
 			this._menuManager = new PopupMenu.PopupMenuManager(this.actor);
 		}
-		this.actor.connect('button-press-event', this.popupMenu.bind(this));
+		this.actor.connect('clicked', this.popupMenu.bind(this));
 	}
 
 	popupMenu () {

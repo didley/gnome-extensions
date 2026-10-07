@@ -2,7 +2,7 @@
 - EGO: https://extensions.gnome.org/extension/1357/notes/ (pk 1357) — shells 40–42 only
 - Upstream: https://github.com/maoschanz/notes-extension-gnome — last push 2024-03; issues #99/#104/#105 ask for 45/46/47+ support
 - Pinned base: fork magentowizard1/notes-extension-gnome 68a5a29 ("Updated to support Gnome 49", ESM port, same uuid/schema so notes carry over)
-- Local changes: `vertical:true`→`orientation`, `add_actor`→`add_child`, metadata 49/50/51
+- Local changes: `vertical:true`→`orientation`, `add_actor`→`add_child`, metadata 49/50/51; GNOME 50 click fix: panel button uses Clutter.ClickGesture (button-press-event no longer fires on PanelMenu.Button), note header buttons use `clicked`
 - Status: `forked` — **51 untested**
 - Alternatives (USER TO VALIDATE):
   | Option | Shells | Notes |

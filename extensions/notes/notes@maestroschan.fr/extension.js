@@ -45,10 +45,21 @@ class NotesManager {
 			style_class: 'system-status-icon'
 		});
 		this.panel_button.add_child(icon);
-		this.panel_button.connect(
-			'button-press-event',
-			this._onButtonPressed.bind(this)
-		);
+		if (typeof Clutter.ClickGesture !== 'undefined') {
+			// GNOME 50 replaced PanelMenu.Button's vfunc_event with a
+			// Clutter.ClickGesture: button-press-event no longer fires
+			let gesture = new Clutter.ClickGesture();
+			if (typeof gesture.set_recognize_on_press === 'function') {
+				gesture.set_recognize_on_press(true);
+			}
+			gesture.connect('recognize', this._onButtonPressed.bind(this));
+			this.panel_button.add_action(gesture);
+		} else {
+			this.panel_button.connect(
+				'button-press-event',
+				this._onButtonPressed.bind(this)
+			);
+		}
 		this._updateIconVisibility();
 		// `0` is the position within the chosen box (here, the `right` one)
 		Main.panel.addToStatusArea('NotesButton', this.panel_button, 0, 'right');
