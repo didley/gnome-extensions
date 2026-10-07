@@ -130,6 +130,13 @@ export class Note {
         // actionMode NORMAL keeps shell shortcuts (Alt+Tab, workspace switching) working while
         // the note has focus; the default (NONE) disables them for the duration of the grab.
         this._grabHelper = new GrabHelper.GrabHelper(this.actor, {actionMode: Shell.ActionMode.NORMAL});
+        // Switching to another window (Alt+Tab) ends the note's keyboard grab, so typing goes
+        // to that window. A null focus window is just the grab itself taking focus: ignore it.
+        const focusId = global.display.connect('notify::focus-window', () => {
+            if (this._grabbed && global.display.focus_window)
+                this._grabHelper.ungrab({actor: this.actor});
+        });
+        this._cleanups.push(() => global.display.disconnect(focusId));
         // On the whole body, not just the text widget: an empty note's text is only one line tall.
         addClick(this._body, {onPress: true, onClick: () => { this.raise(); this._focusText(); }});
         addClick(this._body, {
