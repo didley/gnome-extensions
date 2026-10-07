@@ -123,7 +123,6 @@ export class Note {
 
         this._body = new St.ScrollView({x_expand: true, y_expand: true, overlay_scrollbars: true, clip_to_allocation: true});
         this._body.set_child(box);
-        this._textBox = box;
 
         // A note is not a window, so keyboard focus needs an explicit grab on click.
         this._grabHelper = new GrabHelper.GrabHelper(this.actor);
@@ -157,8 +156,7 @@ export class Note {
                 const next = clampSize(size.w + dx, size.h + dy);
                 Object.assign(this.data, next);
                 this.actor.set_size(next.w, next.h);
-                this._fitText();
-            },
+                    },
             onEnd: () => this._manager.changed(),
         });
 
@@ -182,19 +180,7 @@ export class Note {
         if (d.collapsed) this.actor.add_style_class_name('collapsed');
         else this.actor.remove_style_class_name('collapsed');
         this.actor.set_size(d.w, d.collapsed ? -1 : d.h);
-        this._fitText();
         this._updatePreview();
-    }
-
-    /**
-     * Make the text box at least as tall as the visible body, so clicking or
-     * double-clicking anywhere in the body (not just on the lines of text) acts
-     * on the text, like a normal input. St.ScrollView doesn't stretch its child
-     * and has no usable allocation signal, so work it out from the note height.
-     */
-    _fitText() {
-        const chrome = this._header.get_preferred_height(-1)[1] + this._footer.get_preferred_height(-1)[1];
-        this._textBox.min_height = Math.max(0, this.data.h - chrome);
     }
 
     _updatePreview() {
