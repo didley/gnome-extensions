@@ -1,0 +1,12 @@
+# media-controls (mediacontrols@cliffniff.github.com)
+- EGO: https://extensions.gnome.org/extension/4470/media-controls/ (pk 4470) — EGO latest is 2.4.4 (v47), shells ≤49 only
+- Upstream: https://github.com/sakithb/media-controls — **ARCHIVED**, last release v2.4.5 (2026-04-22, adds shell 50 metadata)
+- Pinned base: b3a22a8 (v2.4.5)
+- Status: `forked`
+- Target shells: 50, 51 (50 = installed 50.5; **51 untested** — no GNOME 51 env available yet)
+- Applied fixes (vendored, see git log):
+  - XaMiNeZH/media-controls d431398/f8d0414 — GNOME 50 panel clicks, slider, notifications (upstream issue sakithb/media-controls#302 reported broken clicks on 50)
+  - AlexanderShad/media-controls 49eaadc — GNOME 51 (`vertical:` → `orientation`)
+- Alternatives: m-obeid/gnome-improved-media-controls (author of a fork says it's their maintained successor; unvetted)
+- Drop fork when: a maintained successor/fork lands on EGO with shell 50+51 and clicks work.
+- Last checked: 2026-10-07

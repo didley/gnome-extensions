@@ -58,7 +58,7 @@ var NoteBox = class NoteBox {
 	_buildNote () {
 		this.actor = new St.BoxLayout({
 			reactive: true,
-			vertical: true,
+			orientation: Clutter.Orientation.VERTICAL,
 			min_height: MIN_HEIGHT,
 			min_width: MIN_WIDTH,
 			style_class: 'noteBoxStyle',

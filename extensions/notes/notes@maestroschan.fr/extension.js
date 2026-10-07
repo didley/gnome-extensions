@@ -399,7 +399,7 @@ class NotesManager {
 		// Create a popup menu for the desktop
 		if (!this._desktopMenu) {
 			this._desktopMenu = new PopupMenu.PopupMenu(null, 0.0, St.Side.LEFT);
-			Main.uiGroup.add_actor(this._desktopMenu.actor);
+			Main.uiGroup.add_child(this._desktopMenu.actor);
 			
 			let menuItem = new PopupMenu.PopupMenuItem(_("New Note"));
 			menuItem.icon = new St.Icon({

@@ -12,7 +12,7 @@ export var CustomModalDialog = GObject.registerClass(
 class CustomModalDialog extends ModalDialog.ModalDialog {
 	_init(textTitle, bodyWidget, textOkButton, callback) {
 		super._init();
-		let messageBox = new St.BoxLayout({vertical: true});
+		let messageBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL});
 
 		let titleLabel = new St.Label({
 			style: 'font-weight: bold; padding-bottom: 16px; width: 400px;',
