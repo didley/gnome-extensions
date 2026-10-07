@@ -129,37 +129,38 @@ export class Note {
             this._manager.changed();
         });
         this._entry = text;
-        // Clutter.Text has no clipboard bindings (St.Entry adds them), so wire up
-        // copy / cut / paste / select-all ourselves.
+        // Clutter.Text has no clipboard or undo support (St.Entry adds the
+        // former), so provide copy / cut / paste / select-all / undo / redo here.
+        this._undoStack = [];
+        this._redoStack = [];
+        this._lastText = d.text ?? '';
+        this._lastEditAt = 0;
+        this._applying = false;
+        text.connect('text-changed', () => {
+            const now = GLib.get_monotonic_time() / 1000;
+            if (!this._applying) {
+                // typing within 800 ms is one undo step
+                if (now - this._lastEditAt > 800 || this._undoStack.length === 0)
+                    this._undoStack.push(this._lastText);
+                if (this._undoStack.length > 200) this._undoStack.shift();
+                this._redoStack = [];
+                this._lastEditAt = now;
+            }
+            this._lastText = text.get_text();
+        });
         text.connect('captured-event', (actor, event) => {
             if (event.type() !== Clutter.EventType.KEY_PRESS) return Clutter.EVENT_PROPAGATE;
-            if (!(event.get_state() & Clutter.ModifierType.CONTROL_MASK)) return Clutter.EVENT_PROPAGATE;
-            const clipboard = St.Clipboard.get_default();
+            const state = event.get_state();
+            if (!(state & Clutter.ModifierType.CONTROL_MASK)) return Clutter.EVENT_PROPAGATE;
+            const shift = !!(state & Clutter.ModifierType.SHIFT_MASK);
             switch (event.get_key_symbol()) {
-            case Clutter.KEY_c: case Clutter.KEY_C: {
-                const sel = text.get_selection();
-                if (sel) clipboard.set_text(St.ClipboardType.CLIPBOARD, sel);
-                return Clutter.EVENT_STOP;
-            }
-            case Clutter.KEY_x: case Clutter.KEY_X: {
-                const sel = text.get_selection();
-                if (sel) {
-                    clipboard.set_text(St.ClipboardType.CLIPBOARD, sel);
-                    text.delete_selection();
-                }
-                return Clutter.EVENT_STOP;
-            }
-            case Clutter.KEY_v: case Clutter.KEY_V:
-                clipboard.get_text(St.ClipboardType.CLIPBOARD, (c, str) => {
-                    if (!str) return;
-                    text.delete_selection();
-                    const pos = text.get_cursor_position();
-                    text.insert_text(str, pos);
-                    text.set_cursor_position(pos < 0 ? -1 : pos + [...str].length);
-                });
-                return Clutter.EVENT_STOP;
-            case Clutter.KEY_a: case Clutter.KEY_A:
-                text.set_selection(0, -1);
+            case Clutter.KEY_c: case Clutter.KEY_C: this.copy(); return Clutter.EVENT_STOP;
+            case Clutter.KEY_x: case Clutter.KEY_X: this.cut(); return Clutter.EVENT_STOP;
+            case Clutter.KEY_v: case Clutter.KEY_V: this.paste(); return Clutter.EVENT_STOP;
+            case Clutter.KEY_a: case Clutter.KEY_A: this.selectAll(); return Clutter.EVENT_STOP;
+            case Clutter.KEY_y: case Clutter.KEY_Y: this.redo(); return Clutter.EVENT_STOP;
+            case Clutter.KEY_z: case Clutter.KEY_Z:
+                if (shift) this.redo(); else this.undo();
                 return Clutter.EVENT_STOP;
             }
             return Clutter.EVENT_PROPAGATE;
@@ -186,6 +187,12 @@ export class Note {
         this._grabHelper = new GrabHelper.GrabHelper(this.actor);
         this._body.connect('captured-event', (a, event) => {
             if (event.type() === Clutter.EventType.BUTTON_PRESS) this.raise();
+            if (event.type() === Clutter.EventType.BUTTON_PRESS &&
+                event.get_button() === Clutter.BUTTON_SECONDARY) {
+                const [ex, ey] = event.get_coords();
+                this._openTextMenu(ex, ey);
+                return Clutter.EVENT_STOP;
+            }
             if (event.type() === Clutter.EventType.BUTTON_PRESS && !this._grabbed) {
                 this._grabbed = true;
                 this._grabHelper.grab({
@@ -465,6 +472,92 @@ export class Note {
         dialog.open();
     }
 
+    // Text actions ----------------------------------------------------------------
+
+    copy() {
+        const sel = this._entry.get_selection();
+        if (sel) St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, sel);
+    }
+
+    cut() {
+        const sel = this._entry.get_selection();
+        if (!sel) return;
+        St.Clipboard.get_default().set_text(St.ClipboardType.CLIPBOARD, sel);
+        this._entry.delete_selection();
+    }
+
+    paste() {
+        const text = this._entry;
+        St.Clipboard.get_default().get_text(St.ClipboardType.CLIPBOARD, (c, str) => {
+            if (!str) return;
+            text.delete_selection();
+            const pos = text.get_cursor_position();
+            text.insert_text(str, pos);
+            text.set_cursor_position(pos < 0 ? -1 : pos + [...str].length);
+        });
+    }
+
+    selectAll() {
+        this._entry.set_selection(0, -1);
+    }
+
+    _applyText(str) {
+        this._applying = true;
+        this._entry.set_text(str);
+        this._applying = false;
+        this._lastText = str;
+        this._lastEditAt = 0; // the next edit starts a new undo step
+        this._entry.set_cursor_position(-1);
+    }
+
+    undo() {
+        if (this._undoStack.length === 0) return;
+        this._redoStack.push(this._entry.get_text());
+        this._applyText(this._undoStack.pop());
+    }
+
+    redo() {
+        if (this._redoStack.length === 0) return;
+        this._undoStack.push(this._entry.get_text());
+        this._applyText(this._redoStack.pop());
+    }
+
+    /** Right-click menu for the text body. */
+    _openTextMenu(x, y) {
+        if (!this._textMenu) {
+            this._anchor = new St.Widget({width: 1, height: 1});
+            Main.uiGroup.add_child(this._anchor);
+            this._textMenu = new PopupMenu.PopupMenu(this._anchor, 0.0, St.Side.TOP);
+            this._textMenu.actor.add_style_class_name('app-well-menu');
+            Main.uiGroup.add_child(this._textMenu.actor);
+            this._textMenu.actor.hide();
+            this._textMenuManager = new PopupMenu.PopupMenuManager(this._anchor);
+            this._textMenuManager.addMenu(this._textMenu);
+            this._textMenu.connect('open-state-changed', (m, open) => {
+                if (!open) this._entry.grab_key_focus();
+            });
+        }
+        this._anchor.set_position(Math.round(x), Math.round(y));
+        const menu = this._textMenu;
+        menu.removeAll();
+        const hasSel = !!this._entry.get_selection();
+        const item = (label, fn, enabled = true) => {
+            const it = new PopupMenu.PopupMenuItem(label);
+            it.setSensitive(enabled);
+            it.connect('activate', fn);
+            menu.addMenuItem(it);
+        };
+        item('Undo', () => this.undo(), this._undoStack.length > 0);
+        item('Redo', () => this.redo(), this._redoStack.length > 0);
+        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        item('Cut', () => this.cut(), hasSel);
+        item('Copy', () => this.copy(), hasSel);
+        item('Paste', () => this.paste());
+        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        item('Select All', () => this.selectAll(), (this._entry.get_text() ?? '') !== '');
+        menu.open();
+    }
+
     // Context menu -------------------------------------------------------------------
 
     _openMenu() {
@@ -508,6 +601,8 @@ export class Note {
         safe(() => this._tipHiders?.forEach(h => h()));
         safe(() => this._grabHelper?.ungrab({actor: this.actor}));
         safe(() => this._menu?.destroy());
+        safe(() => this._textMenu?.destroy());
+        safe(() => this._anchor?.destroy());
         this._menu = null;
         safe(() => this._removeFromLayer());
         safe(() => this.actor.destroy());
