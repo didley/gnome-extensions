@@ -127,8 +127,9 @@ export class Note {
 
         // A note is not a window, so keyboard focus needs an explicit grab on click.
         this._grabHelper = new GrabHelper.GrabHelper(this.actor);
-        addClick(this._text.actor, {onPress: true, onClick: () => { this.raise(); this._focusText(); }});
-        addClick(this._text.actor, {
+        // On the whole body, not just the text widget: an empty note's text is only one line tall.
+        addClick(this._body, {onPress: true, onClick: () => { this.raise(); this._focusText(); }});
+        addClick(this._body, {
             button: Clutter.BUTTON_SECONDARY,
             onPress: true,
             onClick: g => {
