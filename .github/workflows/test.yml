@@ -8,5 +8,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - run: npm ci
       - run: sudo apt-get update && sudo apt-get install -y gjs
       - run: scripts/test.sh

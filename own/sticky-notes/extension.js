@@ -89,7 +89,7 @@ export default class StickyNotesExtension extends Extension {
     }
 
     _fillMenu() {
-        const menu = this._button.menu;
+        const menu = /** @type {PopupMenu.PopupMenu} */ (this._button.menu);
         const item = (label, onActivate, ornament = PopupMenu.Ornament.NONE) => {
             const it = new PopupMenu.PopupMenuItem(label);
             it.setOrnament(ornament);

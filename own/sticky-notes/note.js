@@ -12,8 +12,7 @@ import {noteTitle, firstLine} from './textutil.js';
 import {trackPointer} from './drag.js';
 import {addTooltip} from './tooltip.js';
 import {NoteText} from './textbox.js';
-
-const DOUBLE_CLICK_MS = 300;
+import {DoubleClick} from './doubleclick.js';
 
 /**
  * One sticky note: a header with controls, an editable body and a resize grip,
@@ -28,7 +27,7 @@ export class Note {
     constructor(manager, data) {
         this._manager = manager;
         this.data = data;
-        this._lastPress = 0;
+        this._headerClicks = new DoubleClick();
         this._stopDrag = null;
         this._cleanups = [];
         this._onChrome = false;
@@ -155,7 +154,7 @@ export class Note {
     _updateButtons() {
         // Hidden, not just transparent, so the collapsed preview gets the width.
         for (const b of this._buttons) b.visible = this.actor.hover;
-        this._collapseBtn.child.icon_name = this.data.collapsed ? 'pan-end-symbolic' : 'pan-down-symbolic';
+        /** @type {St.Icon} */ (this._collapseBtn.child).icon_name = this.data.collapsed ? 'pan-end-symbolic' : 'pan-down-symbolic';
     }
 
     setColor(name) {
@@ -225,14 +224,11 @@ export class Note {
             return Clutter.EVENT_PROPAGATE;
 
         // Double-click collapses; a single press starts a drag.
-        const now = GLib.get_monotonic_time() / 1000;
-        if (now - this._lastPress < DOUBLE_CLICK_MS) {
-            this._lastPress = 0;
+        if (this._headerClicks.press(GLib.get_monotonic_time() / 1000)) {
             this._stopDrag?.();
             this.toggleCollapsed();
             return Clutter.EVENT_STOP;
         }
-        this._lastPress = now;
         this.raise();
 
         const [px, py] = event.get_coords();

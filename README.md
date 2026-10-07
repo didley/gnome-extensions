@@ -57,13 +57,17 @@ GNOME caches extension modules per URL and never rescans for new folders, so `de
 journalctl -f _COMM=gnome-shell | grep -i -E 'sticky|JS ERROR'
 ```
 
-### Tests
+### Tests and checks
 
 ```bash
-scripts/test.sh     # Node's built-in test runner for the pure logic, GJS for storage
+npm install            # once: TypeScript + GNOME Shell type definitions (dev only)
+scripts/test.sh        # type check + unit tests
+scripts/smoke.sh sticky-notes   # reload in the running session; fails on any logged error
 ```
 
-Shell-specific code (anything importing `resource:///org/gnome/shell/...`) can't run outside GNOME Shell, so the logic worth testing lives in dependency-free modules: `history.js` (undo/redo), `textutil.js`, `colors.js`, `geometry.js`, `model.js`; `store.js` is tested under `gjs`.
+- **Type checking:** plain JavaScript checked with `tsc` (`checkJs`) against the `@girs/gnome-shell` 50 types. No build step, so the code you upload is the code you wrote. It catches removed APIs such as `Meta.Cursor`.
+- **Unit tests:** shell-specific code (anything importing `resource:///org/gnome/shell/...`) can't run outside GNOME Shell, so the logic worth testing lives in dependency-free modules: `history.js` (undo/redo), `doubleclick.js`, `textutil.js`, `colors.js`, `geometry.js`, `model.js`, run with Node's built-in runner. `store.js` is tested under `gjs`.
+- **Smoke test:** the shell-facing code (dragging, menus, focus, panel icon) can only be exercised inside a real session. `smoke.sh` hot-reloads the extension and fails if it isn't `ACTIVE` or logged a `JS ERROR` / `[Sticky Notes]` error. It leaves the dev loader installed; rebuild and `gnome-extensions install` a release zip afterwards.
 
 ### Code layout
 
@@ -75,7 +79,7 @@ textmenu.js    right-click menu (keeps the selection visible)
 drag.js        pointer tracking via a stage grab
 tooltip.js     hover tooltips
 store.js       debounced JSON persistence
-history.js · textutil.js · colors.js · geometry.js · model.js   pure logic (tested)
+history.js · doubleclick.js · textutil.js · colors.js · geometry.js · model.js   pure logic (tested)
 ```
 
 ### GNOME 50 notes

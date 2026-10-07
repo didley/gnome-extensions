@@ -6,8 +6,10 @@ import Cogl from 'gi://Cogl';
 import {History} from './history.js';
 import {TextMenu} from './textmenu.js';
 
+/** @type {[number, number, number, number]} */
 const INK = [0.17, 0.17, 0.17, 1];
 
+/** @param {[number, number, number, number]} rgbaValues */
 function rgba([r, g, b, a]) {
     const c = new Cogl.Color();
     c.init_from_4f(r, g, b, a);

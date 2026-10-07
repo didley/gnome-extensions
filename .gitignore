@@ -1,3 +1,4 @@
 dist/
 *.zip
 */*/dist/
+node_modules/
