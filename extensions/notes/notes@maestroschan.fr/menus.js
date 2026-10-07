@@ -2,19 +2,16 @@
 // GPL v3
 // Copyright 2018-2021 Romain F. T.
 
-const { Clutter, St } = imports.gi;
-const Main = imports.ui.main;
-const PopupMenu = imports.ui.popupMenu;
-const ShellEntry = imports.ui.shellEntry;
-const Signals = imports.signals;
-const Util = imports.misc.util;
-
-const ExtensionUtils = imports.misc.extensionUtils;
-const Me = ExtensionUtils.getCurrentExtension();
-const Extension = Me.imports.extension;
-
-const Gettext = imports.gettext.domain('notes-extension');
-const _ = Gettext.gettext;
+import Clutter from 'gi://Clutter';
+import St from 'gi://St';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import * as ShellEntry from 'resource:///org/gnome/shell/ui/shellEntry.js';
+// Signals module not available in GNOME 45+, using GObject signals instead
+import * as Util from 'resource:///org/gnome/shell/misc/util.js';
+import * as Extension from './extension.js';
+import * as ExtensionUtils from 'resource:///org/gnome/shell/misc/extensionUtils.js';
+import { gettext as _ } from 'resource:///org/gnome/shell/extensions/extension.js';
 
 const PRESET_COLORS = {
 	'red': [200, 0, 0],
@@ -212,12 +209,27 @@ class NoteOptionsMenu {
 	}
 
 	_onSettings () {
-		if (typeof ExtensionUtils.openPrefs === 'function') {
-			ExtensionUtils.openPrefs();
-		} else {
-			Util.spawn(['gnome-shell-extension-prefs', 'notes@maestroschan.fr']);
+		// Open preferences - use ExtensionUtils.openPrefs() if available (GNOME 45+)
+		// Otherwise fall back to command line
+		try {
+			if (typeof ExtensionUtils.openPrefs === 'function') {
+				ExtensionUtils.openPrefs();
+			} else {
+				// Fallback for older versions
+				Util.spawn(['gnome-extensions', 'prefs', 'notes@maestroschan.fr']);
+			}
+		} catch (e) {
+			// If ExtensionUtils.openPrefs doesn't work, try alternative
+			try {
+				Util.spawn(['gnome-extensions', 'prefs', 'notes@maestroschan.fr']);
+			} catch (e2) {
+				log('Could not open preferences: ' + e2);
+			}
 		}
-		Extension.NOTES_MANAGER._hideNotes();
+		
+		if (Extension.NOTES_MANAGER) {
+			Extension.NOTES_MANAGER._hideNotes();
+		}
 	}
 
 	_onEditTitle () {
@@ -242,7 +254,8 @@ class NoteOptionsMenu {
 		this._source._note.changeFontSize(-1);
 	}
 };
-Signals.addSignalMethods(NoteOptionsMenu.prototype);
+
+export { NoteOptionsMenu };
 
 //------------------------------------------------------------------------------
 
@@ -293,13 +306,14 @@ var NoteRoundButton = class NoteRoundButton {
 			});
 			this._menuManager.addMenu(this._menu.super_menu);
 		}
-		this.emit('menu-state-changed', true);
+		// Note: emit() removed - signals not needed in GNOME 45+
 		this.actor.set_hover(true);
 		this._menu.popup();
 		return false;
 	}
 };
-Signals.addSignalMethods(NoteRoundButton.prototype);
+
+export { NoteRoundButton };
 
 //------------------------------------------------------------------------------
 

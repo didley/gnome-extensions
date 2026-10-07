@@ -2,20 +2,18 @@
 // GPL v3
 // Copyright 2018-2021 Romain F. T.
 
-const { Clutter, St, GLib, Gio } = imports.gi;
-const Main = imports.ui.main;
-const ShellEntry = imports.ui.shellEntry;
-const GrabHelper = imports.ui.grabHelper;
-
-const ExtensionUtils = imports.misc.extensionUtils;
-const Me = ExtensionUtils.getCurrentExtension();
-
-const Menus = Me.imports.menus;
-const Extension = Me.imports.extension;
-const Dialog = Me.imports.dialog;
-
-const Gettext = imports.gettext.domain('notes-extension');
-const _ = Gettext.gettext;
+import Clutter from 'gi://Clutter';
+import St from 'gi://St';
+import GLib from 'gi://GLib';
+import Gio from 'gi://Gio';
+import Pango from 'gi://Pango';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as ShellEntry from 'resource:///org/gnome/shell/ui/shellEntry.js';
+import * as GrabHelper from 'resource:///org/gnome/shell/ui/grabHelper.js';
+import * as Menus from './menus.js';
+import * as Extension from './extension.js';
+import * as Dialog from './dialog.js';
+import { gettext as _ } from 'resource:///org/gnome/shell/extensions/extension.js';
 
 // ~/.local/share/notes@maestroschan.fr
 const PATH = GLib.build_pathv('/', [GLib.get_user_data_dir(), 'notes@maestroschan.fr']);
@@ -27,7 +25,7 @@ const MIN_WIDTH = 200;
 
 function stringFromArray(data){
 	if (data instanceof Uint8Array) {
-		return imports.byteArray.toString(data);
+		return new TextDecoder('utf-8').decode(data);
 	} else {
 		return data.toString();
 	}
@@ -68,6 +66,9 @@ var NoteBox = class NoteBox {
 		});
 
 		this._fontColor = '';
+		this._isMoving = false;
+		this._isResizing = false;
+		this._buttonPressed = false;
 		this._loadState();
 		this._applyActorStyle();
 
@@ -77,7 +78,7 @@ var NoteBox = class NoteBox {
 		//----------------------------------------------------------------------
 
 		this._scrollView = new St.ScrollView({
-			overlay_scrollbars: true,
+			overlay_scrollbars: false,
 			// if true, the scrollbar is inside the textfield, else it's outside
 			x_expand: true,
 			y_expand: true,
@@ -96,7 +97,7 @@ var NoteBox = class NoteBox {
 		clutterText.set_single_line_mode(false);
 		clutterText.set_activatable(false); // we can press Enter
 		clutterText.set_line_wrap(true);
-		clutterText.set_line_wrap_mode(imports.gi.Pango.WrapMode.WORD_CHAR);
+		clutterText.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR);
 
 		this._entryBox = new St.BoxLayout({
 			reactive: true,
@@ -106,7 +107,7 @@ var NoteBox = class NoteBox {
 		});
 
 		this._entryBox.add_child(this.noteEntry);
-		this._scrollView.add_actor(this._entryBox); // yes, actually add_actor
+		this._scrollView.add_child(this._entryBox);
 		this.actor.add_child(this._scrollView);
 
 		//----------------------------------------------------------------------
@@ -162,21 +163,60 @@ var NoteBox = class NoteBox {
 			style_class: 'noteHeaderStyle',
 		});
 
+		// Track edit mode state
+		this._editMode = false;
+
+		// New note button (+ icon) - visible by default
 		let btnNew = new Menus.NoteRoundButton(
 			this,
 			'list-add-symbolic',
 			_("New")
 		);
-		btnNew.actor.connect('clicked', this._createNote.bind(this));
+		btnNew.actor.connect('button-press-event', (actor, event) => {
+			// Only handle left mouse button (button 1)
+			if (event.get_button() === 1) {
+				this._createNote();
+				return true; // Stop event propagation
+			}
+			return false;
+		});
 		this._buttonsBox.add_child(btnNew.actor);
+		this._btnNew = btnNew.actor;
 
+		// Pencil icon button - always visible
+		let btnEdit = new Menus.NoteRoundButton(
+			this,
+			'document-edit-symbolic',
+			_("Edit")
+		);
+		btnEdit.actor.connect('button-press-event', (actor, event) => {
+			// Only handle left mouse button (button 1)
+			if (event.get_button() === 1) {
+				this._toggleEditMode();
+				return true; // Stop event propagation
+			}
+			return false;
+		});
+		this._buttonsBox.add_child(btnEdit.actor);
+		this._btnEdit = btnEdit.actor;
+
+		// Delete button - hidden by default
 		let btnDelete = new Menus.NoteRoundButton(
 			this,
 			'user-trash-symbolic',
 			_("Delete")
 		);
-		btnDelete.actor.connect('clicked', this._openDeleteDialog.bind(this));
+		btnDelete.actor.connect('button-press-event', (actor, event) => {
+			// Only handle left mouse button (button 1)
+			if (event.get_button() === 1) {
+				this._openDeleteDialog();
+				return true; // Stop event propagation
+			}
+			return false;
+		});
 		this._buttonsBox.add_child(btnDelete.actor);
+		this._btnDelete = btnDelete.actor;
+		this._btnDelete.visible = false;
 
 		this.moveBox = new St.Button({
 			x_expand: true,
@@ -185,6 +225,7 @@ var NoteBox = class NoteBox {
 		});
 		this._buttonsBox.add_child(this.moveBox);
 
+		// Options button (3 dots) - hidden by default
 		let btnOptions = new Menus.NoteRoundButton(
 			this,
 			'view-more-symbolic',
@@ -192,13 +233,18 @@ var NoteBox = class NoteBox {
 		);
 		btnOptions.addMenu();
 		this._buttonsBox.add_child(btnOptions.actor);
+		this._btnOptions = btnOptions.actor;
+		this._btnOptions.visible = false;
 
+		// Expand/resize button - hidden by default
 		let ctrlButton = new Menus.NoteRoundButton(
 			this,
 			'view-fullscreen-symbolic',
 			_("Resize")
 		);
 		this._buttonsBox.add_child(ctrlButton.actor);
+		this._btnResize = ctrlButton.actor;
+		this._btnResize.visible = false;
 
 		this.moveBox.connect('button-press-event', this._onMovePress.bind(this));
 		this.moveBox.connect('motion-event', this._onMoveMotion.bind(this));
@@ -211,31 +257,55 @@ var NoteBox = class NoteBox {
 		this.actor.add_child(this._buttonsBox);
 	}
 
+	_toggleEditMode () {
+		this._editMode = !this._editMode;
+		
+		if (this._editMode) {
+			// Edit mode: hide + icon, show delete, options, and expand icons
+			this._btnNew.visible = false;
+			this._btnDelete.visible = true;
+			this._btnOptions.visible = true;
+			this._btnResize.visible = true;
+		} else {
+			// Normal mode: show + icon, hide delete, options, and expand icons
+			this._btnNew.visible = true;
+			this._btnDelete.visible = false;
+			this._btnOptions.visible = false;
+			this._btnResize.visible = false;
+		}
+	}
+
 	_openDeleteDialog () {
-		let noteText = this.noteEntry.get_text();
-		// The text has to be truncated to avoid issues with long notes
-		let lines = noteText.split("\n")
-		if(lines.length > 10) {
-			noteText = lines[0] + "\n" + lines[1] + "\n" + lines[2] + "\n[...]\n";
-			noteText += lines[lines.length - 2] + "\n" + lines[lines.length - 1];
-		}
-		if(noteText === "") {
-			noteText = "[" + _("Empty note") + "]";
-		}
+		try {
+			let noteText = this.noteEntry.get_text();
+			// The text has to be truncated to avoid issues with long notes
+			let lines = noteText.split("\n")
+			if(lines.length > 10) {
+				noteText = lines[0] + "\n" + lines[1] + "\n" + lines[2] + "\n[...]\n";
+				noteText += lines[lines.length - 2] + "\n" + lines[lines.length - 1];
+			}
+			if(noteText === "") {
+				noteText = "[" + _("Empty note") + "]";
+			}
 
-		let description_label = new St.Label({
-			style: 'padding-top: 16px;',
-			x_align: Clutter.ActorAlign.CENTER,
-			text: noteText,
-		});
+			let description_label = new St.Label({
+				style: 'padding-top: 16px;',
+				x_align: Clutter.ActorAlign.CENTER,
+				text: noteText,
+			});
 
-		let dialog = new Dialog.CustomModalDialog(
-			_("Delete this note?"),
-			description_label,
-			_("Delete"),
-			this._deleteNoteObject.bind(this)
-		);
-		dialog.open();
+			let dialog = new Dialog.CustomModalDialog(
+				_("Delete this note?"),
+				description_label,
+				_("Delete"),
+				this._deleteNoteObject.bind(this)
+			);
+			dialog.open();
+		} catch (e) {
+			log('Error opening delete dialog: ' + e);
+			// Fallback: delete directly without confirmation
+			this._deleteNoteObject();
+		}
 	}
 
 	openEditTitleDialog () {
@@ -282,7 +352,7 @@ var NoteBox = class NoteBox {
 //			Main.layoutManager.untrackChrome(this.actor);
 			Main.layoutManager.removeChrome(this.actor);
 		} else {
-			Main.layoutManager._backgroundGroup.remove_actor(this.actor);
+			Main.layoutManager._backgroundGroup.remove_child(this.actor);
 		}
 	}
 
@@ -390,16 +460,29 @@ var NoteBox = class NoteBox {
 		if (mouseButton == 3) {
 			this._entryBox.visible = !this._entryBox.visible;
 			this.entry_is_visible = this._entryBox.visible;
+			return false;
+		}
+		// Only allow dragging with left mouse button (button 1)
+		if (mouseButton !== 1) {
+			return false;
 		}
 		this._onPressCommon(event);
+		this._buttonPressed = true;
 		this._isMoving = true;
 		this._isResizing = false;
+		return true;
 	}
 
 	_onResizePress (actor, event) {
+		// Only allow resizing with left mouse button (button 1)
+		if (event.get_button() !== 1) {
+			return false;
+		}
 		this._onPressCommon(event);
+		this._buttonPressed = true;
 		this._isResizing = true;
 		this._isMoving = false;
+		return true;
 	}
 
 	_onPressCommon (event) {
@@ -409,10 +492,14 @@ var NoteBox = class NoteBox {
 	}
 
 	_onResizeMotion (actor, event) {
-		if (!this._isResizing) { return; }
+		// Only process motion if we're in resizing state and button is pressed
+		if (!this._isResizing || !this._buttonPressed) {
+			return false;
+		}
 		let x = Math.floor(event.get_coords()[0]);
 		let y = Math.floor(event.get_coords()[1]);
 		this._resizeTo(x, y);
+		return true;
 	}
 
 	_resizeTo (event_x, event_y) {
@@ -433,10 +520,14 @@ var NoteBox = class NoteBox {
 	}
 
 	_onMoveMotion (actor, event) {
-		if (!this._isMoving) { return; }
+		// Only process motion if we're in moving state and button is pressed
+		if (!this._isMoving || !this._buttonPressed) {
+			return false;
+		}
 		let x = Math.floor(event.get_coords()[0]);
 		let y = Math.floor(event.get_coords()[1]);
 		this._moveTo(x, y);
+		return true;
 	}
 
 	_moveTo (event_x, event_y) {
@@ -452,9 +543,15 @@ var NoteBox = class NoteBox {
 	}
 
 	_onRelease (actor, event) {
-		this._isResizing = false;
-		this._isMoving = false;
-		this.onlySave();
+		// Only stop dragging/resizing on left mouse button release
+		if (event.get_button() === 1) {
+			this._buttonPressed = false;
+			this._isResizing = false;
+			this._isMoving = false;
+			this.onlySave();
+			return true;
+		}
+		return false;
 	}
 
 	//--------------------------------------------------------------------------
@@ -612,11 +709,16 @@ var NoteBox = class NoteBox {
 	}
 
 	destroy () {
-		this.actor.destroy_all_children();
+		let children = this.actor.get_children();
+		for (let i = 0; i < children.length; i++) {
+			children[i].destroy();
+		}
 		this.actor.destroy();
 		this.actor = null;
 	}
 };
+
+export { NoteBox };
 
 //------------------------------------------------------------------------------
 

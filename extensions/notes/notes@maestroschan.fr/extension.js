@@ -2,61 +2,29 @@
 // GPL v3
 // Copyright 2018-2021 Romain F. T.
 
-const { St, Shell, GLib, Gio, Meta } = imports.gi;
-const PanelMenu = imports.ui.panelMenu;
-const Panel = imports.ui.panel;
-const Main = imports.ui.main;
-const Mainloop = imports.mainloop;
-
-const ExtensionUtils = imports.misc.extensionUtils;
-const Me = ExtensionUtils.getCurrentExtension();
-
-const NoteBox = Me.imports.noteBox;
-
-const Gettext = imports.gettext.domain('notes-extension');
-const _ = Gettext.gettext;
+import { Extension, gettext as _ } from 'resource:///org/gnome/shell/extensions/extension.js';
+import St from 'gi://St';
+import Shell from 'gi://Shell';
+import GLib from 'gi://GLib';
+import Gio from 'gi://Gio';
+import Meta from 'gi://Meta';
+import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
+import * as Panel from 'resource:///org/gnome/shell/ui/panel.js';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import Clutter from 'gi://Clutter';
+import * as NoteBox from './noteBox.js';
 
 //------------------------------------------------------------------------------
 
 const PATH = GLib.build_pathv('/', [GLib.get_user_data_dir(), 'notes@maestroschan.fr']);
 // which is usually ~/.local/share/notes@maestroschan.fr
 
-var NOTES_MANAGER;
-var SETTINGS;
-var LAYER_SETTING;
-var AUTO_FOCUS;
-
-function init() {
-	ExtensionUtils.initTranslations();
-	try {
-		let a = Gio.file_new_for_path(PATH);
-		if (!a.query_exists(null)) {
-			a.make_directory(null);
-		}
-	} catch (e) {
-		log(e.message);
-	}
-	LAYER_SETTING = '';
-}
-
-function enable() {
-	SETTINGS = ExtensionUtils.getSettings();
-	AUTO_FOCUS = SETTINGS.get_boolean('auto-focus'); // XXX crado
-
-	NOTES_MANAGER = new NotesManager();
-}
-
-function disable() {
-	NOTES_MANAGER.destroy();
-
-	if (NOTES_MANAGER) {
-		NOTES_MANAGER = null;
-	}
-
-	if (SETTINGS) {
-		SETTINGS = null;
-	}
-}
+// Global variables accessible by NoteBox
+export var NOTES_MANAGER;
+export var SETTINGS;
+export var LAYER_SETTING;
+export var AUTO_FOCUS;
 
 //------------------------------------------------------------------------------
 
@@ -96,6 +64,16 @@ class NotesManager {
 		// Initialisation of the signals connections
 		this._bindKeyboardShortcut();
 		this._connectAllSignals();
+		
+		// Connect desktop menu after a short delay to ensure layout manager is ready
+		GLib.timeout_add(GLib.PRIORITY_DEFAULT, 500, () => {
+			try {
+				this._connectDesktopMenu();
+			} catch (e) {
+				log('Error connecting desktop menu: ' + e);
+			}
+			return GLib.SOURCE_REMOVE;
+		});
 	}
 
 	_bindKeyboardShortcut () {
@@ -187,7 +165,7 @@ class NotesManager {
 
 	_hideNotes () {
 		this._onlyHideNotes();
-		this._timeout_id = Mainloop.timeout_add(10, () => {
+		this._timeout_id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 10, () => {
 			this._timeout_id = null;
 			// saving to the disk is slightly delayed to give the illusion that
 			// the extension doesn't freeze the system
@@ -339,6 +317,135 @@ class NotesManager {
 	}
 
 	//--------------------------------------------------------------------------
+	// Desktop context menu integration -----------------------------------------
+
+	_connectDesktopMenu() {
+		// Based on: https://discourse.gnome.org/t/is-it-possible-to-add-an-entry-to-desktops-context-menu/21177
+		// The background menu needs to be accessed from Main.layoutManager._bgManagers
+		// We'll try multiple times with delays since it might not be ready immediately
+		
+		let attempts = 0;
+		let maxAttempts = 10;
+		
+		let tryAddMenuItem = () => {
+			attempts++;
+			try {
+				let bgManagers = Main.layoutManager._bgManagers;
+				if (bgManagers && bgManagers.length > 0) {
+					let bgManager = bgManagers[0];
+					if (bgManager && bgManager.backgroundActor && bgManager.backgroundActor._backgroundMenu) {
+						this._addMenuItemToDesktopMenu(bgManager.backgroundActor._backgroundMenu);
+						log('Successfully added "New Note" to desktop context menu');
+						return true;
+					}
+				}
+			} catch (e) {
+				log('Error accessing desktop menu (attempt ' + attempts + '): ' + e);
+			}
+			
+			if (attempts < maxAttempts) {
+				// Try again after a delay
+				GLib.timeout_add(GLib.PRIORITY_DEFAULT, 200, () => {
+					return tryAddMenuItem();
+				});
+			} else {
+				log('Failed to add menu item to desktop menu after ' + maxAttempts + ' attempts');
+			}
+			return false;
+		};
+		
+		// Start trying to add the menu item
+		tryAddMenuItem();
+	}
+
+	_addMenuItemToDesktopMenu(menu) {
+		// Add "New Note" menu item to the existing desktop menu
+		if (this._desktopMenuItem) {
+			log('Menu item already added, skipping');
+			return; // Already added
+		}
+		
+		if (!menu) {
+			log('Menu is null, cannot add item');
+			return;
+		}
+		
+		try {
+			this._desktopMenuItem = new PopupMenu.PopupMenuItem(_("New Note"));
+			this._desktopMenuItem.icon = new St.Icon({
+				icon_name: 'document-edit-symbolic',
+				icon_size: 16
+			});
+			this._desktopMenuItem.connect('activate', () => {
+				log('New Note menu item activated');
+				this._createNoteFromDesktop();
+			});
+			
+			// Add at the beginning of the menu (position 0)
+			menu.addMenuItem(this._desktopMenuItem, 0);
+			log('Added "New Note" menu item to desktop context menu');
+		} catch (e) {
+			log('Error adding menu item: ' + e);
+		}
+	}
+
+	_showDesktopNoteMenu(event) {
+		// Get event coordinates
+		let [x, y] = event.get_coords();
+		this._showDesktopNoteMenuAt(x, y);
+	}
+	
+	_showDesktopNoteMenuAt(x, y) {
+		// Create a popup menu for the desktop
+		if (!this._desktopMenu) {
+			this._desktopMenu = new PopupMenu.PopupMenu(null, 0.0, St.Side.LEFT);
+			Main.uiGroup.add_actor(this._desktopMenu.actor);
+			
+			let menuItem = new PopupMenu.PopupMenuItem(_("New Note"));
+			menuItem.icon = new St.Icon({
+				icon_name: 'document-edit-symbolic',
+				icon_size: 16
+			});
+			menuItem.connect('activate', () => {
+				this._createNoteFromDesktop();
+				if (this._desktopMenu) {
+					this._desktopMenu.close();
+				}
+			});
+			this._desktopMenu.addMenuItem(menuItem);
+			log('Created desktop note menu');
+		}
+		
+		// Open the menu at the specified coordinates
+		try {
+			this._desktopMenu.open(St.Side.LEFT, x, y);
+			log('Showing desktop note menu at ' + x + ', ' + y);
+		} catch (e) {
+			log('Error showing desktop menu: ' + e);
+		}
+	}
+
+	_createNoteFromDesktop() {
+		// Ensure notes are loaded
+		if(!this._notesLoaded) {
+			this._loadAllNotes();
+		}
+		
+		// Create a new note with default settings
+		let defaultColor = SETTINGS.get_strv('first-note-rgb');
+		let colorString = (parseFloat(defaultColor[0]) * 255).toString() + ',' +
+		                  (parseFloat(defaultColor[1]) * 255).toString() + ',' +
+		                  (parseFloat(defaultColor[2]) * 255).toString();
+		
+		this.createNote(colorString, 16);
+		
+		// Show the notes if they're not visible
+		if (!this._notesAreVisible) {
+			this._showNotes();
+		}
+	}
+
+	//--------------------------------------------------------------------------
 
 	destroy() {
 		SETTINGS.disconnect(this._settingsSignals['layout']);
@@ -360,11 +467,79 @@ class NotesManager {
 		this.panel_button.destroy();
 
 		if (this._timeout_id) {
-			Mainloop.source_remove(this._timeout_id);
+			GLib.source_remove(this._timeout_id);
 			this._timeout_id = null;
 		}
+		
+		// Clean up desktop menu
+		if (this._desktopMenu) {
+			this._desktopMenu.destroy();
+			this._desktopMenu = null;
+		}
+		
+		// Remove menu item from desktop menu if it was added
+		if (this._desktopMenuItem) {
+			try {
+				let bgManagers = Main.layoutManager._bgManagers;
+				if (bgManagers && bgManagers.length > 0) {
+					let backgroundActor = bgManagers[0].backgroundActor;
+					if (backgroundActor && backgroundActor._backgroundMenu) {
+						backgroundActor._backgroundMenu.removeMenuItem(this._desktopMenuItem);
+					}
+				}
+			} catch (e) {
+				// Ignore errors during cleanup
+			}
+			this._desktopMenuItem.destroy();
+			this._desktopMenuItem = null;
+		}
+		
+		// Disconnect desktop menu handler
+		if (this._desktopMenuId) {
+			let backgroundGroup = Main.layoutManager._backgroundGroup;
+			backgroundGroup.disconnect(this._desktopMenuId);
+			this._desktopMenuId = null;
+		}
 	}
-};
+}
 
 //------------------------------------------------------------------------------
 
+export default class NotesExtension extends Extension {
+	constructor(metadata) {
+		super(metadata);
+		
+		// Create data directory if it doesn't exist
+		try {
+			let a = Gio.file_new_for_path(PATH);
+			if (!a.query_exists(null)) {
+				a.make_directory(null);
+			}
+		} catch (e) {
+			log(e.message);
+		}
+		
+		LAYER_SETTING = '';
+	}
+
+	enable() {
+		// Get settings and initialize
+		SETTINGS = this.getSettings();
+		AUTO_FOCUS = SETTINGS.get_boolean('auto-focus');
+		
+		NOTES_MANAGER = new NotesManager();
+	}
+
+	disable() {
+		if (NOTES_MANAGER) {
+			NOTES_MANAGER.destroy();
+			NOTES_MANAGER = null;
+		}
+
+		if (SETTINGS) {
+			SETTINGS = null;
+		}
+	}
+}
+
+//------------------------------------------------------------------------------
