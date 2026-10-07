@@ -129,6 +129,41 @@ export class Note {
             this._manager.changed();
         });
         this._entry = text;
+        // Clutter.Text has no clipboard bindings (St.Entry adds them), so wire up
+        // copy / cut / paste / select-all ourselves.
+        text.connect('captured-event', (actor, event) => {
+            if (event.type() !== Clutter.EventType.KEY_PRESS) return Clutter.EVENT_PROPAGATE;
+            if (!(event.get_state() & Clutter.ModifierType.CONTROL_MASK)) return Clutter.EVENT_PROPAGATE;
+            const clipboard = St.Clipboard.get_default();
+            switch (event.get_key_symbol()) {
+            case Clutter.KEY_c: case Clutter.KEY_C: {
+                const sel = text.get_selection();
+                if (sel) clipboard.set_text(St.ClipboardType.CLIPBOARD, sel);
+                return Clutter.EVENT_STOP;
+            }
+            case Clutter.KEY_x: case Clutter.KEY_X: {
+                const sel = text.get_selection();
+                if (sel) {
+                    clipboard.set_text(St.ClipboardType.CLIPBOARD, sel);
+                    text.delete_selection();
+                }
+                return Clutter.EVENT_STOP;
+            }
+            case Clutter.KEY_v: case Clutter.KEY_V:
+                clipboard.get_text(St.ClipboardType.CLIPBOARD, (c, str) => {
+                    if (!str) return;
+                    text.delete_selection();
+                    const pos = text.get_cursor_position();
+                    text.insert_text(str, pos);
+                    text.set_cursor_position(pos < 0 ? -1 : pos + [...str].length);
+                });
+                return Clutter.EVENT_STOP;
+            case Clutter.KEY_a: case Clutter.KEY_A:
+                text.set_selection(0, -1);
+                return Clutter.EVENT_STOP;
+            }
+            return Clutter.EVENT_PROPAGATE;
+        });
         const entryBox = new St.BoxLayout({
             x_expand: true,
             y_expand: true,
