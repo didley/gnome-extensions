@@ -3,7 +3,6 @@ import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Pango from 'gi://Pango';
 import Cogl from 'gi://Cogl';
-import Meta from 'gi://Meta';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js';
@@ -104,7 +103,7 @@ export class Note {
             activatable: false,
             line_wrap: true,
             line_wrap_mode: Pango.WrapMode.WORD_CHAR,
-            font_name: 'Sans 13',
+            font_name: 'Sans 10',
             x_expand: true,
             y_expand: true,
             x_align: Clutter.ActorAlign.FILL,
@@ -141,7 +140,7 @@ export class Note {
         this._grip.connect('captured-event', this._onGripEvent.bind(this));
         this._grip.connect('notify::hover', () => {
             if (this._stageId) return; // keep the resize cursor while dragging
-            this._setCursor(this._grip.hover ? Meta.Cursor.SE_RESIZE : Meta.Cursor.DEFAULT);
+            this._setCursor(this._grip.hover ? Clutter.CursorType.SE_RESIZE : Clutter.CursorType.DEFAULT);
         });
         this._footer.add_child(this._grip);
         this.actor.add_child(this._footer);
@@ -265,9 +264,11 @@ export class Note {
         if (this.data.pinned) {
             Main.layoutManager.addChrome(this.actor);
             this._layer = 'chrome';
+            console.log(`[StickyDBG] -> chrome parent=${this.actor.get_parent()} uiGroup=${Main.layoutManager.uiGroup}`);
         } else {
             Main.layoutManager._backgroundGroup.add_child(this.actor);
             this._layer = 'background';
+            console.log(`[StickyDBG] -> background parent=${this.actor.get_parent()}`);
         }
     }
 
@@ -343,7 +344,7 @@ export class Note {
         const startW = this.actor.width;
         const startH = this.actor.height;
         const [px, py] = event.get_coords();
-        this._setCursor(Meta.Cursor.SE_RESIZE);
+        this._setCursor(Clutter.CursorType.SE_RESIZE);
         this._beginDrag(px, py, (dx, dy) => {
             this.data.w = Math.round(Math.max(MIN_W, startW + dx));
             this.data.h = Math.round(Math.max(MIN_H, startH + dy));
@@ -383,7 +384,7 @@ export class Note {
 
     _endDrag() {
         if (this._stageId) {
-            if (!this._grip.hover) this._setCursor(Meta.Cursor.DEFAULT);
+            if (!this._grip.hover) this._setCursor(Clutter.CursorType.DEFAULT);
             global.stage.disconnect(this._stageId);
             this._stageId = 0;
             const cb = this._dragEnd;
@@ -461,13 +462,15 @@ export class Note {
     }
 
     destroy() {
-        this._endDrag();
-        this._setCursor(Meta.Cursor.DEFAULT);
-        this._tipHiders?.forEach(h => h());
-        this._grabHelper?.ungrab({actor: this.actor});
-        this._menu?.destroy();
+        // each step guarded so one failure can never leave the actor on screen
+        const safe = fn => { try { fn(); } catch (e) { console.error(`[Sticky Notes] destroy: ${e}`); } };
+        safe(() => this._endDrag());
+        safe(() => this._setCursor(Clutter.CursorType.DEFAULT));
+        safe(() => this._tipHiders?.forEach(h => h()));
+        safe(() => this._grabHelper?.ungrab({actor: this.actor}));
+        safe(() => this._menu?.destroy());
         this._menu = null;
-        this._removeFromLayer();
-        this.actor.destroy();
+        safe(() => this._removeFromLayer());
+        safe(() => this.actor.destroy());
     }
 }
