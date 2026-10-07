@@ -94,7 +94,7 @@ See [AGENTS.md](AGENTS.md): check for maintained alternatives first, vendor the 
 
 1. `scripts/build.sh sticky-notes` and test the zip on a clean login.
 2. Sign in at <https://extensions.gnome.org/accounts/login/>, then upload at <https://extensions.gnome.org/upload/>.
-3. A reviewer checks it against the [review guidelines](https://gjs.guide/extensions/review-guidelines/review-guidelines.html) (typically days to weeks). Keep `shell-version` to versions you have tested, and bump `version-name` / re-upload for each update.
+3. A reviewer checks it against the [review guidelines](https://gjs.guide/extensions/review-guidelines/review-guidelines.html) (typically days to weeks). `shell-version` lists 50 and 51; 51 has had a static review against the porting guide but has not been run (see `tracking/`). Bump `version-name` / re-upload for each update.
 
 ## Licence
 

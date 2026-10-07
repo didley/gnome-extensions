@@ -21,7 +21,7 @@ Vendored, patched GNOME Shell extensions that are unmaintained or lag behind GNO
 Run `scripts/check-upstream.sh`. If upstream/EGO now supports 50+51, propose dropping the fork: uninstall local copy, install original from EGO, set tracking status `upstream-fixed`.
 
 ## Rules
-- Only list a shell version in `metadata.json` that has been tested; mark untested ones in the tracking file. GNOME gives no forward-compat guarantee — re-check on each new release.
+- Only list a shell version in `metadata.json` that has been tested, unless the user explicitly asks for one earlier; then record in the tracking file that it is untested and what it rests on (e.g. a static review of the porting guide). GNOME gives no forward-compat guarantee — re-check on each new release.
 - Use ESM (`import ... from 'resource:///org/gnome/shell/...'`, `Extension` class). Avoid removed APIs: `add_actor`/`remove_actor` (use `add_child`), St `vertical:` (use `orientation: Clutter.Orientation.VERTICAL`).
 - Host is immutable Fedora: `glib-compile-resources` may be missing; no `mutter-devkit`. Use toolbox/distrobox for build tools; test with `journalctl -f /usr/bin/gnome-shell` after a re-login (Wayland can't restart the shell).
 - GNOME 50 gotchas: `PanelMenu.Button` swallows presses → use `captured-event`; `event.get_source()` can be null → `global.stage.get_event_actor(event)`; `Meta.Cursor` / `display.set_cursor` are gone → `actor.set_cursor_type(Clutter.CursorType.X)`; `addChrome` rejects `affectsInputRegion`; an empty `PopupMenu` never opens (fill it before `toggle()`); `Clutter.Text` paints its selection only with key focus; `Clutter.Color` is now `Cogl.Color` (`init_from_4f`).
