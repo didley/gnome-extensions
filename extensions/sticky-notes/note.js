@@ -415,6 +415,33 @@ export class Note {
         cb?.();
     }
 
+    /** Ask before deleting a note that has content; empty notes go straight away. */
+    requestDelete() {
+        if ((this.data.text ?? '').trim() === '') {
+            this._manager.deleteNote(this);
+            return;
+        }
+        const dialog = new ModalDialog.ModalDialog({destroyOnClose: true});
+        dialog.contentLayout.add_child(new St.Label({
+            text: 'Delete this note?\nThis can\u2019t be undone.',
+            style: 'text-align: center; font-size: 13px; padding: 8px 12px;',
+        }));
+        dialog.addButton({
+            label: 'Cancel',
+            action: () => dialog.close(),
+            key: Clutter.KEY_Escape,
+        });
+        dialog.addButton({
+            label: 'Delete',
+            action: () => {
+                dialog.close();
+                this._manager.deleteNote(this);
+            },
+            default: true,
+        });
+        dialog.open();
+    }
+
     // Context menu -------------------------------------------------------------------
 
     _openMenu() {
