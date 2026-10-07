@@ -1,7 +1,10 @@
 {
   "uuid": "sticky-notes@didley.dev",
   "name": "Sticky Notes",
-  "description": "Minimal Stickies-style notes on your desktop. Double-click a note's header to collapse it.",
-  "shell-version": ["50"],
-  "version-name": "0.1.0"
+  "description": "Minimal Stickies-style notes for your desktop. Double-click a note's header to collapse it; notes float above your windows.",
+  "shell-version": [
+    "50"
+  ],
+  "version-name": "1.0.0",
+  "url": "https://github.com/didley/gnome-extensions"
 }

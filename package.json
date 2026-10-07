@@ -1,0 +1,8 @@
+{
+  "name": "gnome-extensions",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "scripts/test.sh"
+  }
+}

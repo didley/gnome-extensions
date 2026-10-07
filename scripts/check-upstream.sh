@@ -5,7 +5,6 @@ set -uo pipefail
 VERSIONS=("${@:-50 51}"); read -ra VERSIONS <<< "${VERSIONS[*]}"
 TRACKED=(
   "mediacontrols@cliffniff.github.com|4470|sakithb/media-controls"
-  "notes@maestroschan.fr|1357|maoschanz/notes-extension-gnome"
 )
 for row in "${TRACKED[@]}"; do
   IFS='|' read -r uuid pk repo <<< "$row"
