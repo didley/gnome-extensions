@@ -1,0 +1,7 @@
+{
+  "uuid": "sticky-notes@didley.dev",
+  "name": "Sticky Notes",
+  "description": "Minimal Stickies-style notes on your desktop. Double-click a note's header to collapse it.",
+  "shell-version": ["50"],
+  "version-name": "0.1.0"
+}

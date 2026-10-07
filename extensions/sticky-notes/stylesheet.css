@@ -1,0 +1,8 @@
+.sticky-note { border-radius: 8px; box-shadow: 0 3px 10px rgba(0,0,0,0.35); }
+.sticky-header { border-radius: 8px 8px 0 0; height: 22px; padding: 0 4px; }
+.sticky-note.collapsed .sticky-header { border-radius: 8px; }
+.sticky-btn { width: 18px; height: 18px; padding: 0; margin: 2px 0; border-radius: 9px; color: rgba(0,0,0,0.55); }
+.sticky-btn:hover { background-color: rgba(0,0,0,0.12); }
+.sticky-entry { background: transparent; border: none; box-shadow: none; padding: 6px 10px; margin: 0; color: #2b2b2b; caret-color: #2b2b2b; selection-background-color: rgba(0,0,0,0.2); font-size: 13px; }
+.sticky-entry:focus { background: transparent; border: none; box-shadow: none; }
+.sticky-grip { width: 14px; height: 14px; }
