@@ -1,0 +1,57 @@
+/* Notes' "body" **************************************************************/
+
+.noteBoxStyle {
+	padding: 0px;
+	margin: 0px;
+}
+
+.noteBoxStyle:hover {
+	box-shadow: 0px 0px 10px #000;
+}
+
+.notesTextField {
+	border-width: 0px;
+	border-radius: 0px;
+	box-shadow: none;
+}
+
+.notesBackground {
+	background-gradient-start: rgba(0, 0, 0, 0.3);
+	background-gradient-end: rgba(0, 0, 0, 0.9);
+	background-gradient-direction: vertical;
+}
+
+/* Notes' headers and the buttons in them *************************************/
+
+.noteHeaderStyle {
+	spacing: 10px;
+	margin: 5px;
+}
+
+.notesTitleButton {
+	text-align: center;
+}
+
+.notesCircleButton {
+	border-width: 1px;
+	border-radius: 14px;
+	height: 28px;
+	width: 28px;
+	border-style: solid;
+	border-color: black;
+}
+
+/* Intended to be used with notesCircleButton */
+.notesHeaderboxButton {
+	border-style: solid;
+	border-color: grey; /* TODO should be the same as the note's text */
+}
+
+.notesCircleButton:hover, .notesCircleButton:active {
+	border-width: 2px;
+	border-radius: 10px;
+	height: 26px;
+	width: 26px;
+}
+
+

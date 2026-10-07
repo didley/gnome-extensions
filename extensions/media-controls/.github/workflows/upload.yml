@@ -1,0 +1,46 @@
+name: Publish to EGO
+
+on:
+  release:
+    types: [created]
+
+permissions:
+  contents: write
+
+jobs:
+  upload:
+    name: Build and upload
+    runs-on: ubuntu-latest
+    if: github.event.release.prerelease == false
+    container:
+      image: ubuntu:25.10
+
+    steps:
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y gnome-shell gettext zip unzip git nodejs npm curl libglib2.0-dev
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install PNPM
+        run: npm install -g pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build extension
+        run: pnpm run build
+
+      - name: Attach zip to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/builds/*.zip
+
+      - name: Upload to EGO
+        env:
+          EGO_PASSWORD: ${{ secrets.EGO_PASSWORD }}
+          EGO_ARGS: --password-file -
+        run: |
+          printf "%s" "$EGO_PASSWORD" | pnpm run ext:upload
