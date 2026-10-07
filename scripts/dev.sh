@@ -10,7 +10,9 @@
 # Usage: scripts/dev.sh sticky-notes     (first run on a new uuid needs ONE relogin)
 set -euo pipefail
 name="$1"
-src="$(cd "$(dirname "$0")/.." && pwd)/extensions/$name"
+root="$(cd "$(dirname "$0")/.." && pwd)"
+src=""; for d in own patched; do [ -d "$root/$d/$name" ] && src="$root/$d/$name"; done
+[ -n "$src" ] || { echo "no extension named $name in own/ or patched/" >&2; exit 1; }
 uuid=$(python3 -c "import json;print(json.load(open('$src/metadata.json'))['uuid'])")
 dest="$HOME/.local/share/gnome-shell/extensions/$uuid"
 v=$(date +%s)

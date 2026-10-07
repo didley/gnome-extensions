@@ -1,11 +1,25 @@
 # GNOME extensions
 
-A small monorepo of GNOME Shell extensions I maintain, built for **GNOME 50**.
+Two kinds of GNOME Shell extension live here, kept in separate folders, all targeting **GNOME 50**:
 
-| Extension | What | Status |
+| Folder | What's in it |
+|---|---|
+| [`own/`](own) | Extensions **I wrote from scratch**. |
+| [`patched/`](patched) | **Third-party extensions I've vendored and patched** because upstream is unmaintained or hasn't caught up with GNOME 50. Each is a pristine upstream commit followed by my fixes, so `git log -p patched/<name>` shows exactly what changed. |
+
+## Own extensions
+
+| Extension | What |
+|---|---|
+| [`sticky-notes`](own/sticky-notes) | Minimal macOS-Stickies-style notes for the desktop. See below. |
+
+## Patched extensions
+
+| Extension | Upstream | What I changed |
 |---|---|---|
-| [`sticky-notes`](extensions/sticky-notes) | Minimal macOS-Stickies-style notes for the desktop. **Original code.** | Active |
-| [`media-controls`](extensions/media-controls) | Fork of [sakithb/media-controls](https://github.com/sakithb/media-controls) (archived upstream) with GNOME 50 fixes. | Fork, tracked until upstream is fixed |
+| [`media-controls`](patched/media-controls) | [sakithb/media-controls](https://github.com/sakithb/media-controls) (archived) | GNOME 50 click/slider fixes and 51 metadata, taken from community forks. Tracked in [`tracking/`](tracking) until upstream (or a successor) supports GNOME 50 again. |
+
+Patched extensions are not mine: credit and licences stay with the upstream authors. `tracking/<uuid>.md` records each one's upstream, pinned commit, applied fixes and alternatives, and `scripts/check-upstream.sh` reports when a fork can be dropped.
 
 ## Sticky Notes
 
@@ -26,7 +40,7 @@ From a release zip, or build one yourself:
 
 ```bash
 scripts/build.sh sticky-notes
-gnome-extensions install --force extensions/sticky-notes/dist/sticky-notes@didley.dev.shell-extension.zip
+gnome-extensions install --force own/sticky-notes/dist/sticky-notes@didley.dev.shell-extension.zip
 ```
 
 Log out and back in (Wayland can't restart the shell), then `gnome-extensions enable sticky-notes@didley.dev`.
@@ -68,9 +82,9 @@ history.js · textutil.js · colors.js · geometry.js · model.js   pure logic (
 
 Things that bit during development, kept in [AGENTS.md](AGENTS.md): `PanelMenu.Button` swallows presses (use `captured-event`), `event.get_source()` can be `null` (use `global.stage.get_event_actor`), `Meta.Cursor` and `display.set_cursor` are gone (use `actor.set_cursor_type`), `addChrome` rejects `affectsInputRegion`, and empty `PopupMenu`s never open.
 
-## Tracking forks and alternatives
+## Adding or patching an extension
 
-`tracking/<uuid>.md` records upstream status, applied fixes and alternatives for each extension; `scripts/check-upstream.sh` reports whether upstream now supports the current GNOME so a fork can be dropped. See [AGENTS.md](AGENTS.md) for the workflow used when adding an extension.
+See [AGENTS.md](AGENTS.md): check for maintained alternatives first, vendor the pristine upstream into `patched/`, add fixes in separate commits, and write a `tracking/` file.
 
 ## Publishing Sticky Notes to extensions.gnome.org
 

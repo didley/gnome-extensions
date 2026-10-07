@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build media-controls zip (mirrors upstream package.json build, without pnpm).
 set -euo pipefail
-cd "$(dirname "$0")/../extensions/media-controls"
+cd "$(dirname "$0")/../patched/media-controls"
 rm -rf dist && mkdir -p dist/temp dist/builds
 cp -r src/* dist/temp/
 R=org.gnome.shell.extensions.mediacontrols.gresource

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {COLORS, DEFAULT_COLOR, colorPair, nextColor} from '../extensions/sticky-notes/colors.js';
+import {COLORS, DEFAULT_COLOR, colorPair, nextColor} from '../own/sticky-notes/colors.js';
 
 test('the default colour exists and is the first one', () => {
     assert.equal(Object.keys(COLORS)[0], DEFAULT_COLOR);

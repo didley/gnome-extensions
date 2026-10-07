@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {firstLine, noteTitle, selectionRows} from '../extensions/sticky-notes/textutil.js';
+import {firstLine, noteTitle, selectionRows} from '../own/sticky-notes/textutil.js';
 
 test('firstLine skips blank lines and trims', () => {
     assert.equal(firstLine('\n  \n  hello world  \nsecond'), 'hello world');

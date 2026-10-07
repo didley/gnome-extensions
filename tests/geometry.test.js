@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {clampPosition, clampSize, HEADER_H, MIN_W, MIN_H} from '../extensions/sticky-notes/geometry.js';
+import {clampPosition, clampSize, HEADER_H, MIN_W, MIN_H} from '../own/sticky-notes/geometry.js';
 
 const monitor = {x: 0, y: 0, width: 1920, height: 1080};
 

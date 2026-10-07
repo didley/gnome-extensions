@@ -1,7 +1,7 @@
 // Run with: gjs -m tests/gjs/store.js   (needs GLib/Gio only, not GNOME Shell)
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
-import {Store} from '../../extensions/sticky-notes/store.js';
+import {Store} from '../../own/sticky-notes/store.js';
 
 let failures = 0;
 function check(name, ok, detail = '') {

@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Build an installable/uploadable zip for a self-contained extension dir.
-# Usage: scripts/build.sh sticky-notes   ->  extensions/sticky-notes/dist/<uuid>.shell-extension.zip
+# Usage: scripts/build.sh sticky-notes   ->  own/sticky-notes/dist/<uuid>.shell-extension.zip
 set -euo pipefail
 name="$1"
-src="$(cd "$(dirname "$0")/.." && pwd)/extensions/$name"
+root="$(cd "$(dirname "$0")/.." && pwd)"
+src=""; for d in own patched; do [ -d "$root/$d/$name" ] && src="$root/$d/$name"; done
+[ -n "$src" ] || { echo "no extension named $name in own/ or patched/" >&2; exit 1; }
 cd "$src"
 extra=()
 for f in *.js; do [[ "$f" == extension.js || "$f" == prefs.js ]] || extra+=(--extra-source="$f"); done

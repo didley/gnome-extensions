@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {History} from '../extensions/sticky-notes/history.js';
+import {History} from '../own/sticky-notes/history.js';
 
 test('nothing to undo or redo initially', () => {
     const h = new History('a');

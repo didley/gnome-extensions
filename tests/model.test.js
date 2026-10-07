@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeNote, newNoteRecord} from '../extensions/sticky-notes/model.js';
+import {normalizeNote, newNoteRecord} from '../own/sticky-notes/model.js';
 
 const monitor = {x: 0, y: 0, width: 1920, height: 1080};
 
