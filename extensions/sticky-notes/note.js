@@ -150,6 +150,10 @@ export class Note {
         });
         text.connect('captured-event', (actor, event) => {
             if (event.type() !== Clutter.EventType.KEY_PRESS) return Clutter.EVENT_PROPAGATE;
+            if (this._textMenu?.isOpen && event.get_key_symbol() === Clutter.KEY_Escape) {
+                this._textMenu.close();
+                return Clutter.EVENT_STOP;
+            }
             const state = event.get_state();
             if (!(state & Clutter.ModifierType.CONTROL_MASK)) return Clutter.EVENT_PROPAGATE;
             const shift = !!(state & Clutter.ModifierType.SHIFT_MASK);
@@ -556,6 +560,13 @@ export class Note {
         menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
         item('Select All', () => this.selectAll(), (this._entry.get_text() ?? '') !== '');
         menu.open();
+        // Clutter.Text only paints its selection while it has key focus, and the
+        // menu takes focus when it opens. Give it straight back (the mouse still
+        // drives the menu; Escape is handled in the key handler).
+        GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+            if (menu.isOpen) this._entry.grab_key_focus();
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     // Context menu -------------------------------------------------------------------
