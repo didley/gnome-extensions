@@ -1,4 +1,3 @@
-import Clutter from 'gi://Clutter';
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
@@ -65,27 +64,13 @@ export default class StickyNotesExtension extends Extension {
             gicon: Gio.FileIcon.new(Gio.File.new_for_path(`${this.path}/icons/sticky-note-symbolic.svg`)),
             style_class: 'system-status-icon',
         }));
-        // GNOME 50's PanelMenu.Button swallows the press, so neither
-        // button-press-event nor 'clicked' fire; captured-event still does.
-        this._button.connect('captured-event', (actor, event) => {
-            const type = event.type();
-            const isPress = type === Clutter.EventType.TOUCH_BEGIN ||
-                (type === Clutter.EventType.BUTTON_PRESS && event.get_button() === Clutter.BUTTON_PRIMARY);
-            if (!isPress) return Clutter.EVENT_PROPAGATE;
-            this._onPanelClick();
-            return Clutter.EVENT_STOP;
+        // The shell opens the menu on click, but only if it is not empty, so keep it
+        // filled and refresh it each time it opens.
+        this._fillMenu();
+        /** @type {PopupMenu.PopupMenu} */ (this._button.menu).connect('open-state-changed', (menu, open) => {
+            if (open) this._fillMenu();
         });
         Main.panel.addToStatusArea(this.uuid, this._button, 0, 'right');
-    }
-
-    /** No notes yet: make one. Otherwise open the menu. */
-    _onPanelClick() {
-        if (this._notes.length === 0) {
-            this.newNote();
-            return;
-        }
-        this._fillMenu(); // PopupMenu refuses to open while empty
-        this._button.menu.toggle();
     }
 
     _fillMenu() {

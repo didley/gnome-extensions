@@ -10,10 +10,9 @@ import * as GrabHelper from 'resource:///org/gnome/shell/ui/grabHelper.js';
 import {colorPair, nextColor} from './colors.js';
 import {clampPosition, clampSize} from './geometry.js';
 import {noteTitle, firstLine} from './textutil.js';
-import {trackPointer} from './drag.js';
+import {addClick, addDrag} from './gestures.js';
 import {addTooltip} from './tooltip.js';
 import {NoteText} from './textbox.js';
-import {DoubleClick} from './doubleclick.js';
 
 /**
  * One sticky note: a header with controls, an editable body and a resize grip,
@@ -28,8 +27,6 @@ export class Note {
     constructor(manager, data) {
         this._manager = manager;
         this.data = data;
-        this._headerClicks = new DoubleClick();
-        this._stopDrag = null;
         this._cleanups = [];
         this._onChrome = false;
 
@@ -61,6 +58,7 @@ export class Note {
             track_hover: true,
         });
         this.actor.connect('notify::hover', () => this._updateButtons());
+        addClick(this.actor, {onPress: true, onClick: () => this.raise()});
         this.actor.add_child(this._buildHeader());
         this.actor.add_child(this._buildBody());
         this.actor.add_child(this._buildFooter());
@@ -69,7 +67,6 @@ export class Note {
 
     _buildHeader() {
         const header = this._header = new St.BoxLayout({style_class: 'sticky-header', reactive: true, x_expand: true});
-        header.connect('captured-event', (a, event) => this._onHeaderEvent(event));
 
         const button = (icon, tip, onClick) => {
             const b = new St.Button({
@@ -96,6 +93,22 @@ export class Note {
         // GNOME window styling: actions on the left, window controls on the right.
         for (const child of [this._newBtn, this._colorBtn, this._preview, this._minBtn, this._collapseBtn, this._closeBtn])
             header.add_child(child);
+
+        // Dragging the header moves the note; double-clicking it collapses. Presses
+        // on the header buttons are left to the buttons.
+        const notOnButton = event => !this._isOnButton(event);
+        let origin = null;
+        addDrag(header, {
+            shouldHandle: notOnButton,
+            onBegin: () => { origin = {x: this.actor.x, y: this.actor.y}; this.raise(); },
+            onMove: (dx, dy) => {
+                const pos = clampPosition(origin.x + dx, origin.y + dy, this.actor.width, Main.layoutManager.primaryMonitor);
+                Object.assign(this.data, pos);
+                this.actor.set_position(pos.x, pos.y);
+            },
+            onEnd: () => this._manager.changed(),
+        });
+        addClick(header, {clicks: 2, onPress: true, shouldHandle: notOnButton, onClick: () => this.toggleCollapsed()});
         return header;
     }
 
@@ -116,7 +129,16 @@ export class Note {
 
         // A note is not a window, so keyboard focus needs an explicit grab on click.
         this._grabHelper = new GrabHelper.GrabHelper(this.actor);
-        this._body.connect('captured-event', (a, event) => this._onBodyEvent(event));
+        addClick(this._text.actor, {onPress: true, onClick: () => this._focusText()});
+        addClick(this._text.actor, {
+            button: Clutter.BUTTON_SECONDARY,
+            onPress: true,
+            onClick: g => {
+                this._focusText();
+                const {x, y} = g.get_coords_abs();
+                this._text.menu.open(x, y);
+            },
+        });
         return this._body;
     }
 
@@ -130,7 +152,16 @@ export class Note {
             reactive: true,
         });
         this._grip.set_cursor_type(Clutter.CursorType.NWSE_RESIZE);
-        this._grip.connect('captured-event', (a, event) => this._onGripEvent(event));
+        let size = null;
+        addDrag(this._grip, {
+            onBegin: () => { size = {w: this.actor.width, h: this.actor.height}; },
+            onMove: (dx, dy) => {
+                const next = clampSize(size.w + dx, size.h + dy);
+                Object.assign(this.data, next);
+                this.actor.set_size(next.w, next.h);
+            },
+            onEnd: () => this._manager.changed(),
+        });
 
         this._footer = new St.BoxLayout({x_expand: true});
         this._footer.add_child(new St.Widget({x_expand: true}));
@@ -225,72 +256,16 @@ export class Note {
         return !!src && this._buttons.some(b => src === b || b.contains(src));
     }
 
-    _onHeaderEvent(event) {
-        if (event.type() !== Clutter.EventType.BUTTON_PRESS ||
-            event.get_button() !== Clutter.BUTTON_PRIMARY ||
-            this._isOnButton(event))
-            return Clutter.EVENT_PROPAGATE;
-
-        // Double-click collapses; a single press starts a drag.
-        if (this._headerClicks.press(GLib.get_monotonic_time() / 1000)) {
-            this._stopDrag?.();
-            this.toggleCollapsed();
-            return Clutter.EVENT_STOP;
-        }
-        this.raise();
-
-        const [px, py] = event.get_coords();
-        const [ox, oy] = [this.actor.x, this.actor.y];
-        this._drag(this._header, {x: px, y: py}, (dx, dy) => {
-            const pos = clampPosition(ox + dx, oy + dy, this.actor.width, Main.layoutManager.primaryMonitor);
-            Object.assign(this.data, pos);
-            this.actor.set_position(pos.x, pos.y);
+    /** A note is not a window, so keyboard focus needs an explicit grab on click. */
+    _focusText() {
+        if (this._grabbed) return;
+        this._grabbed = true;
+        this._grabHelper.grab({
+            actor: this.actor,
+            focus: this._text.actor,
+            onUngrab: () => { this._grabbed = false; },
         });
-        return Clutter.EVENT_STOP;
-    }
-
-    _onGripEvent(event) {
-        if (event.type() !== Clutter.EventType.BUTTON_PRESS ||
-            event.get_button() !== Clutter.BUTTON_PRIMARY)
-            return Clutter.EVENT_PROPAGATE;
-
-        const [px, py] = event.get_coords();
-        const [w, h] = [this.actor.width, this.actor.height];
-        this._drag(this._grip, {x: px, y: py}, (dx, dy) => {
-            const size = clampSize(w + dx, h + dy);
-            Object.assign(this.data, size);
-            this.actor.set_size(size.w, size.h);
-        });
-        return Clutter.EVENT_STOP;
-    }
-
-    _onBodyEvent(event) {
-        if (event.type() !== Clutter.EventType.BUTTON_PRESS) return Clutter.EVENT_PROPAGATE;
-        this.raise();
-
-        if (event.get_button() === Clutter.BUTTON_SECONDARY) {
-            const [x, y] = event.get_coords();
-            this._text.menu.open(x, y);
-            return Clutter.EVENT_STOP;
-        }
-        if (!this._grabbed) {
-            this._grabbed = true;
-            this._grabHelper.grab({
-                actor: this.actor,
-                focus: this._text.actor,
-                onUngrab: () => { this._grabbed = false; },
-            });
-            this._text.focus();
-        }
-        return Clutter.EVENT_PROPAGATE;
-    }
-
-    _drag(source, start, onMove) {
-        this._stopDrag?.();
-        this._stopDrag = trackPointer(source, start, onMove, () => {
-            this._stopDrag = null;
-            this._manager.changed();
-        });
+        this._text.focus();
     }
 
     // Teardown --------------------------------------------------------------------
@@ -298,7 +273,6 @@ export class Note {
     destroy() {
         // Each step is guarded so one failure can never leave the actor on screen.
         const safe = fn => { try { fn(); } catch (e) { console.error(`[Sticky Notes] destroy: ${e}`); } };
-        safe(() => this._stopDrag?.());
         safe(() => this._cleanups.forEach(c => c()));
         safe(() => this._text?.destroy());
         safe(() => this._grabHelper?.ungrab({actor: this.actor}));

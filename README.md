@@ -66,7 +66,7 @@ scripts/smoke.sh sticky-notes   # reload in the running session; fails on any lo
 ```
 
 - **Type checking:** plain JavaScript checked with `tsc` (`checkJs`) against the `@girs/gnome-shell` 50 types. No build step, so the code you upload is the code you wrote. It catches removed APIs such as `Meta.Cursor`.
-- **Unit tests:** shell-specific code (anything importing `resource:///org/gnome/shell/...`) can't run outside GNOME Shell, so the logic worth testing lives in dependency-free modules: `history.js` (undo/redo), `doubleclick.js`, `textutil.js`, `colors.js`, `geometry.js`, `model.js`, run with Node's built-in runner. `store.js` is tested under `gjs`.
+- **Unit tests:** shell-specific code (anything importing `resource:///org/gnome/shell/...`) can't run outside GNOME Shell, so the logic worth testing lives in dependency-free modules: `history.js` (undo/redo), `textutil.js`, `colors.js`, `geometry.js`, `model.js`, run with Node's built-in runner. `store.js` is tested under `gjs`.
 - **Smoke test:** the shell-facing code (dragging, menus, focus, panel icon) can only be exercised inside a real session. `smoke.sh` hot-reloads the extension and fails if it isn't `ACTIVE` or logged a `JS ERROR` / `[Sticky Notes]` error. It leaves the dev loader installed; rebuild and `gnome-extensions install` a release zip afterwards.
 
 ### Code layout
@@ -76,15 +76,15 @@ extension.js   enable/disable, panel icon + menu, owns the notes
 note.js        one note: header, body, footer, dragging, minimize/collapse/delete
 textbox.js     the editable text: clipboard, undo/redo, key handling
 textmenu.js    right-click menu (keeps the selection visible)
-drag.js        pointer tracking via a stage grab
+gestures.js    click / drag / key helpers on Clutter gestures and controllers
 tooltip.js     hover tooltips
 store.js       debounced JSON persistence
-history.js · doubleclick.js · textutil.js · colors.js · geometry.js · model.js   pure logic (tested)
+history.js · textutil.js · colors.js · geometry.js · model.js   pure logic (tested)
 ```
 
 ### GNOME 50 notes
 
-Things that bit during development, kept in [AGENTS.md](AGENTS.md): `PanelMenu.Button` swallows presses (use `captured-event`), `event.get_source()` can be `null` (use `global.stage.get_event_actor`), `Meta.Cursor` and `display.set_cursor` are gone (use `actor.set_cursor_type`), `addChrome` rejects `affectsInputRegion`, and empty `PopupMenu`s never open.
+Things that bit during development, kept in [AGENTS.md](AGENTS.md): `PanelMenu.Button` swallows presses (keep its menu non-empty and let it open natively), `event.get_source()` can be `null` (use `global.stage.get_event_actor`), `Meta.Cursor` and `display.set_cursor` are gone (use `actor.set_cursor_type`), `addChrome` rejects `affectsInputRegion`, and empty `PopupMenu`s never open.
 
 ## Adding or patching an extension
 

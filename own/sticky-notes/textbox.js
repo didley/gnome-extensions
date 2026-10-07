@@ -5,6 +5,7 @@ import Pango from 'gi://Pango';
 import Cogl from 'gi://Cogl';
 import {History} from './history.js';
 import {TextMenu} from './textmenu.js';
+import {addKeys} from './gestures.js';
 
 /** @type {[number, number, number, number]} */
 const INK = [0.17, 0.17, 0.17, 1];
@@ -53,7 +54,7 @@ export class NoteText {
             if (!this._applying) this._history.record(text, GLib.get_monotonic_time() / 1000);
             onChange(text);
         });
-        t.connect('captured-event', (a, event) => this._onKey(event));
+        addKeys(t, (key, state) => this._onKey(key, state));
 
         this.menu = new TextMenu(this);
     }
@@ -101,15 +102,13 @@ export class NoteText {
         this.actor.set_cursor_position(-1);
     }
 
-    _onKey(event) {
-        if (event.type() !== Clutter.EventType.KEY_PRESS) return Clutter.EVENT_PROPAGATE;
-        const key = event.get_key_symbol();
+    /** @returns {boolean} true if the key was handled */
+    _onKey(key, state) {
         if (this.menu.isOpen && key === Clutter.KEY_Escape) {
             this.menu.close();
-            return Clutter.EVENT_STOP;
+            return true;
         }
-        const state = event.get_state();
-        if (!(state & Clutter.ModifierType.CONTROL_MASK)) return Clutter.EVENT_PROPAGATE;
+        if (!(state & Clutter.ModifierType.CONTROL_MASK)) return false;
         const shift = !!(state & Clutter.ModifierType.SHIFT_MASK);
 
         switch (key) {
@@ -122,9 +121,9 @@ export class NoteText {
             if (shift) this.redo(); else this.undo();
             break;
         default:
-            return Clutter.EVENT_PROPAGATE;
+            return false;
         }
-        return Clutter.EVENT_STOP;
+        return true;
     }
 
     destroy() {
