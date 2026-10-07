@@ -5,6 +5,7 @@
 - Status: `forked`
 - Target shells: 50, 51 (50 = installed 50.5; **51 untested** — no GNOME 51 env available yet)
 - Applied fixes (vendored, see git log):
+  - local: null-guard in `PanelButton.addMenuSlider` (playerProxy null after await race, seen on 50.5)
   - XaMiNeZH/media-controls d431398/f8d0414 — GNOME 50 panel clicks, slider, notifications (upstream issue sakithb/media-controls#302 reported broken clicks on 50)
   - AlexanderShad/media-controls 49eaadc — GNOME 51 (`vertical:` → `orientation`)
 - Alternatives: m-obeid/gnome-improved-media-controls (author of a fork says it's their maintained successor; unvetted)
