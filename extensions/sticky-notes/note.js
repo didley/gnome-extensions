@@ -84,8 +84,8 @@ export class Note {
         this._header.add_child(this._plusBtn);
         this._header.add_child(this._colorBtn);
         this._header.add_child(this._preview);
-        this._header.add_child(this._collapseBtn);
         this._header.add_child(this._minBtn);
+        this._header.add_child(this._collapseBtn);
         this._header.add_child(this._closeBtn);
         this._header.connect('captured-event', this._onHeaderEvent.bind(this));
         this.actor.connect('notify::hover', () => this._updateButtons());
