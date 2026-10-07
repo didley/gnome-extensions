@@ -580,6 +580,65 @@ export class Note {
             onUngrab: () => this._closeTextMenu(),
         });
         this._entry.grab_key_focus();
+        this._showSelectionOverlay();
+    }
+
+    /**
+     * Clutter.Text hides its own selection highlight once the menu takes focus,
+     * so paint translucent rectangles over the selected text while the menu is open.
+     */
+    _showSelectionOverlay() {
+        this._clearSelectionOverlay();
+        const t = this._entry;
+        const str = t.get_text() ?? '';
+        const len = [...str].length;
+        if (!t.get_selection()) return;
+        let a = t.get_cursor_position();
+        let b = t.get_selection_bound();
+        if (a < 0) a = len;
+        if (b < 0) b = len;
+        const start = Math.min(a, b);
+        const end = Math.max(a, b);
+        const rows = []; // {y, h, x1, x2}
+        let prevX = 0;
+        for (let i = start; i <= end; i++) {
+            const [ok, x, y, h] = t.position_to_coords(i);
+            if (!ok) continue;
+            let row = rows.find(r => Math.abs(r.y - y) < 1);
+            if (!row) {
+                row = {y, h, x1: x, x2: x};
+                rows.push(row);
+            } else {
+                // positions walk left to right within a row
+                row.x1 = Math.min(row.x1, x);
+                row.x2 = Math.max(row.x2, x);
+            }
+            row.last = x;
+            row.charW = Math.max(row.charW ?? 0, x - prevX > 0 && x - prevX < 40 ? x - prevX : 6);
+            prevX = x;
+        }
+        // earlier rows run on to the end of their line (one character past the last position)
+        rows.forEach((r, i) => {
+            if (i < rows.length - 1) r.x2 += r.charW || 6;
+        });
+        const [ox, oy] = t.get_transformed_position();
+        this._selRects = rows.filter(r => r.x2 > r.x1).map(r => {
+            const rect = new St.Widget({
+                style: 'background-color: rgba(0, 90, 220, 0.35); border-radius: 2px;',
+                reactive: false,
+            });
+            rect.set_position(Math.round(ox + r.x1), Math.round(oy + r.y));
+            rect.set_size(Math.max(2, Math.round(r.x2 - r.x1)), Math.round(r.h));
+            Main.uiGroup.add_child(rect);
+            return rect;
+        });
+        // the menu itself must stay above the highlight
+        if (this._textMenuBox) Main.uiGroup.set_child_above_sibling(this._textMenuBox, null);
+    }
+
+    _clearSelectionOverlay() {
+        this._selRects?.forEach(r => r.destroy());
+        this._selRects = null;
     }
 
     get textMenuOpen() {
@@ -590,6 +649,7 @@ export class Note {
         const box = this._textMenuBox;
         if (!box) return;
         this._textMenuBox = null;
+        this._clearSelectionOverlay();
         try { this._textMenuGrab?.ungrab({actor: box}); } catch (e) { /* already ungrabbed */ }
         this._textMenuGrab = null;
         box.destroy();
