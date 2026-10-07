@@ -176,6 +176,15 @@ class PanelButton extends PanelMenu.Button {
         this.initActions();
         // @ts-expect-error
         this.menu.box.add_style_class_name("popup-menu-container");
+        // Refresh the slider whenever the menu is opened. Clutter pauses
+        // PropertyTransitions on unmapped actors, so the slider's elapsed
+        // time drifts from the player's real position while the menu is
+        // closed. Re-fetch the position on open and (re)start the transition.
+        this.menu.connect("open-state-changed", (_, isOpen) => {
+            if (isOpen && this.extension.showTrackSlider && this.menuSlider != null) {
+                this.addMenuSlider().catch(errorLog);
+            }
+        });
         this.connect("destroy", this.onDestroy.bind(this));
     }
 
@@ -232,7 +241,7 @@ class PanelButton extends PanelMenu.Button {
                 style_class: "no-padding popup-menu-box",
                 activate: false,
             });
-            this.menuBox.set_vertical(true);
+            this.menuBox.orientation = Clutter.Orientation.VERTICAL;
             this.menuBox.remove_style_class_name("popup-menu-item");
             this.menuBox.remove_all_children();
         }
@@ -312,7 +321,7 @@ class PanelButton extends PanelMenu.Button {
     addMenuPlayers() {
         if (this.menuPlayers == null) {
             this.menuPlayers = new St.BoxLayout({
-                vertical: true,
+                orientation: Clutter.Orientation.VERTICAL,
             });
         }
         if (this.menuPlayersTextBox == null) {
@@ -549,7 +558,7 @@ class PanelButton extends PanelMenu.Button {
     addMenuLabels() {
         if (this.menuLabels == null) {
             this.menuLabels = new St.BoxLayout({
-                vertical: true,
+                orientation: Clutter.Orientation.VERTICAL,
             });
         }
         if (this.menuLabelTitle != null) {
@@ -1057,38 +1066,63 @@ class PanelButton extends PanelMenu.Button {
      * @returns {void}
      */
     initActions() {
-        this.connect("button-press-event", (_, /** @type {Clutter.Event} */ event) => {
-            const button = event.get_button();
+        if (typeof Clutter.ClickGesture !== "undefined") {
+            // GNOME 50 replaced PanelMenu.Button's vfunc_event with a
+            // Clutter.ClickGesture, so button-press-event no longer fires
+            // reliably for non-primary buttons. Disable the parent's gesture
+            // (which only toggles the menu on left click) and install our own
+            // per-button gestures so right/middle clicks work again.
+            if (this._clickGesture && typeof this._clickGesture.set_enabled === "function") {
+                this._clickGesture.set_enabled(false);
+            }
 
-            if (button === Clutter.BUTTON_PRIMARY) {
-                this.handleLeftClick();
+            this.addPanelClickGesture(Clutter.BUTTON_PRIMARY, () => this.handleLeftClick());
+            this.addPanelClickGesture(Clutter.BUTTON_MIDDLE, () => {
+                const action = this.extension.mouseActionMiddle;
+                if (action !== MouseActions.NONE) {
+                    this.doMouseAction(action);
+                }
+            });
+            this.addPanelClickGesture(Clutter.BUTTON_SECONDARY, () => {
+                const action = this.extension.mouseActionRight;
+                if (action !== MouseActions.NONE) {
+                    this.doMouseAction(action);
+                }
+            });
+        } else {
+            this.connect("button-press-event", (_, /** @type {Clutter.Event} */ event) => {
+                const button = event.get_button();
+
+                if (button === Clutter.BUTTON_PRIMARY) {
+                    this.handleLeftClick();
+                    return Clutter.EVENT_STOP;
+                }
+
+                let action;
+                if (button === Clutter.BUTTON_MIDDLE) {
+                    action = this.extension.mouseActionMiddle;
+                } else if (button === Clutter.BUTTON_SECONDARY) {
+                    action = this.extension.mouseActionRight;
+                }
+
+                if (action === MouseActions.NONE) {
+                    return Clutter.EVENT_PROPAGATE;
+                }
+
+                this.doMouseAction(action);
                 return Clutter.EVENT_STOP;
-            }
+            });
 
-            let action;
-            if (button === Clutter.BUTTON_MIDDLE) {
-                action = this.extension.mouseActionMiddle;
-            } else if (button === Clutter.BUTTON_SECONDARY) {
-                action = this.extension.mouseActionRight;
-            }
+            this.connect("touch-event", (_, /** @type {Clutter.Event} */ event) => {
+                const eventType = event.type();
+                if (eventType === Clutter.EventType.TOUCH_BEGIN) {
+                    this.handleLeftClick();
+                    return Clutter.EVENT_STOP;
+                }
 
-            if (action === MouseActions.NONE) {
                 return Clutter.EVENT_PROPAGATE;
-            }
-
-            this.doMouseAction(action);
-            return Clutter.EVENT_STOP;
-        });
-
-        this.connect("touch-event", (_, /** @type {Clutter.Event} */ event) => {
-            const eventType = event.type();
-            if (eventType === Clutter.EventType.TOUCH_BEGIN) {
-                this.handleLeftClick();
-                return Clutter.EVENT_STOP;
-            }
-
-            return Clutter.EVENT_PROPAGATE;
-        });
+            });
+        }
 
         this.connect("scroll-event", (_, /** @type {Clutter.Event} */ event) => {
             const direction = event.get_scroll_direction();
@@ -1099,6 +1133,27 @@ class PanelButton extends PanelMenu.Button {
             }
             return Clutter.EVENT_STOP;
         });
+    }
+
+    /**
+     * @private
+     * @param {number} button
+     * @param {() => void} callback
+     * @returns {void}
+     */
+    addPanelClickGesture(button, callback) {
+        const gesture = new Clutter.ClickGesture();
+        if (typeof gesture.set_required_button === "function") {
+            gesture.set_required_button(button);
+        }
+        if (typeof gesture.set_recognize_on_press === "function") {
+            gesture.set_recognize_on_press(true);
+        }
+        gesture.connect("recognize", () => {
+            callback();
+            return Clutter.EVENT_STOP;
+        });
+        this.add_action(gesture);
     }
 
     handleLeftClick() {
