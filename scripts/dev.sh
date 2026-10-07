@@ -21,6 +21,7 @@ rm -rf "$HOME"/.local/share/gnome-shell/extensions/"${uuid%@*}"-dev*@"${uuid#*@}
 mkdir -p "$dest/impl"
 # top-level files the shell itself reads
 cp "$src/metadata.json" "$dest/metadata.json"
+[ -d "$src/icons" ] && { rm -rf "$dest/icons"; cp -r "$src/icons" "$dest/icons"; }
 [ -f "$src/stylesheet.css" ] && cp "$src/stylesheet.css" "$dest/stylesheet.css"
 if [ -d "$src/schemas" ]; then rm -rf "$dest/schemas"; cp -r "$src/schemas" "$dest/schemas"; glib-compile-schemas "$dest/schemas" 2>/dev/null || true; fi
 # real code under impl/ with versioned relative imports

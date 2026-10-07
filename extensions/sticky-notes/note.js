@@ -56,9 +56,17 @@ export class Note {
         });
         this._closeBtn = this._makeButton('window-close-symbolic', () => this._manager.deleteNote(this));
         this._plusBtn = this._makeButton('list-add-symbolic', () => this._manager.newNote(this));
-        const spacer = new St.Widget({x_expand: true});
+        this._pinBtn = this._makeButton('view-pin-symbolic', () => this.setPinned(!this.data.pinned));
+        this._preview = new St.Label({
+            style_class: 'sticky-preview',
+            x_expand: true,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        this._preview.clutter_text.set_ellipsize(Pango.EllipsizeMode.END);
+        this._preview.clutter_text.set_single_line_mode(true);
         this._header.add_child(this._closeBtn);
-        this._header.add_child(spacer);
+        this._header.add_child(this._preview);
+        this._header.add_child(this._pinBtn);
         this._header.add_child(this._plusBtn);
         this._header.connect('captured-event', this._onHeaderEvent.bind(this));
         this.actor.connect('notify::hover', () => this._updateButtons());
@@ -75,6 +83,8 @@ export class Note {
             style_class: 'sticky-entry',
             can_focus: true,
             x_expand: true,
+            y_expand: false,
+            y_align: Clutter.ActorAlign.START,
             hint_text: '',
         });
         const text = this._entry.get_clutter_text();
@@ -85,9 +95,10 @@ export class Note {
         text.set_text(d.text ?? '');
         text.connect('text-changed', () => {
             this.data.text = text.get_text();
+            this._updatePreview();
             this._manager.changed();
         });
-        const entryBox = new St.BoxLayout({x_expand: true, y_expand: true});
+        const entryBox = new St.BoxLayout({x_expand: true, y_expand: true, y_align: Clutter.ActorAlign.START});
         entryBox.add_child(this._entry);
         this._body.set_child(entryBox);
         this.actor.add_child(this._body);
@@ -95,7 +106,7 @@ export class Note {
         // Resize grip (bottom-right) ----------------------------------------
         this._footer = new St.BoxLayout({x_expand: true});
         this._footer.add_child(new St.Widget({x_expand: true}));
-        this._grip = new St.Widget({style_class: 'sticky-grip', reactive: true});
+        this._grip = new St.Label({text: '\u25e2', style_class: 'sticky-grip', reactive: true});
         this._grip.connect('captured-event', this._onGripEvent.bind(this));
         this._footer.add_child(this._grip);
         this.actor.add_child(this._footer);
@@ -128,10 +139,17 @@ export class Note {
         return btn;
     }
 
+    _updatePreview() {
+        const first = (this.data.text ?? '').split('\n').find(l => l.trim() !== '') ?? '';
+        this._preview.text = this.data.collapsed ? first.trim() : '';
+    }
+
     _updateButtons() {
         const show = this.actor.hover;
         this._closeBtn.opacity = show ? 255 : 0;
         this._plusBtn.opacity = show ? 255 : 0;
+        // pin shows its state: bright = floating on top, dim = on the desktop
+        this._pinBtn.opacity = show ? (this.data.pinned ? 255 : 110) : 0;
     }
 
     // Style / state ------------------------------------------------------------
@@ -149,6 +167,7 @@ export class Note {
         if (d.collapsed) this.actor.add_style_class_name('collapsed');
         else this.actor.remove_style_class_name('collapsed');
         this.actor.set_size(d.w, d.collapsed ? -1 : d.h);
+        this._updatePreview();
     }
 
     setColor(name) {
@@ -167,6 +186,7 @@ export class Note {
         this.data.pinned = pinned;
         this._removeFromLayer();
         this._putInLayer();
+        this._updateButtons();
         this._manager.changed();
     }
 
@@ -200,8 +220,9 @@ export class Note {
     // Header events: drag, double-click, right-click menu ------------------------
 
     _isOnButton(event) {
-        const src = event.get_source();
-        return [this._closeBtn, this._plusBtn].some(b => src === b || b.contains(src));
+        const src = global.stage.get_event_actor(event);
+        if (!src) return false;
+        return [this._closeBtn, this._pinBtn, this._plusBtn].some(b => src === b || b.contains(src));
     }
 
     _onHeaderEvent(actor, event) {
@@ -270,6 +291,10 @@ export class Note {
         this._stageId = global.stage.connect('captured-event', (stage, ev) => {
             const t = ev.type();
             if (t === Clutter.EventType.MOTION) {
+                if (!(ev.get_state() & Clutter.ModifierType.BUTTON1_MASK)) {
+                    this._endDrag();
+                    return Clutter.EVENT_PROPAGATE;
+                }
                 const [x, y] = ev.get_coords();
                 onMove(x - px, y - py, ox, oy);
                 return Clutter.EVENT_STOP;

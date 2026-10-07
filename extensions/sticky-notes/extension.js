@@ -1,6 +1,7 @@
 import Clutter from 'gi://Clutter';
 import St from 'gi://St';
 import GLib from 'gi://GLib';
+import Gio from 'gi://Gio';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -23,7 +24,7 @@ export default class StickyNotesExtension extends Extension {
         // neither button-press-event nor 'clicked' fire; captured-event does.
         this._button = new PanelMenu.Button(0.0, 'Sticky Notes', true);
         this._button.add_child(new St.Icon({
-            icon_name: 'document-edit-symbolic',
+            gicon: Gio.FileIcon.new(Gio.File.new_for_path(`${this.path}/icons/sticky-note-symbolic.svg`)),
             style_class: 'system-status-icon',
         }));
         this._button.connect('captured-event', (actor, event) => {
