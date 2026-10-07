@@ -64,9 +64,11 @@ export class Note {
         });
         this._closeBtn = this._makeButton('window-close-symbolic', () => this.requestDelete());
         this._plusBtn = this._makeButton('list-add-symbolic', () => this._manager.newNote(this));
+        this._collapseBtn = this._makeButton('pan-down-symbolic', () => this.toggleCollapsed());
         this._colorBtn = this._makeButton('color-select-symbolic', () => this.cycleColor());
         this._pinBtn = this._makeButton('view-pin-symbolic', () => this.setPinned(!this.data.pinned));
         this._tooltip(this._closeBtn, () => 'Delete note');
+        this._tooltip(this._collapseBtn, () => (this.data.collapsed ? 'Expand note' : 'Collapse note'));
         this._tooltip(this._colorBtn, () => `Change color (${this.data.color})`);
         this._tooltip(this._pinBtn, () => `Float on top: ${this.data.pinned ? 'on' : 'off'}`);
         this._tooltip(this._plusBtn, () => 'New note');
@@ -78,6 +80,7 @@ export class Note {
         this._preview.clutter_text.set_ellipsize(Pango.EllipsizeMode.END);
         this._preview.clutter_text.set_single_line_mode(true);
         this._header.add_child(this._closeBtn);
+        this._header.add_child(this._collapseBtn);
         this._header.add_child(this._preview);
         this._header.add_child(this._colorBtn);
         this._header.add_child(this._pinBtn);
@@ -138,10 +141,7 @@ export class Note {
         this._footer.add_child(new St.Widget({x_expand: true}));
         this._grip = new St.Label({text: '\u25e2', style_class: 'sticky-grip', reactive: true});
         this._grip.connect('captured-event', this._onGripEvent.bind(this));
-        this._grip.connect('notify::hover', () => {
-            if (this._stageId) return; // keep the resize cursor while dragging
-            this._setCursor(this._grip.hover ? Clutter.CursorType.SE_RESIZE : Clutter.CursorType.DEFAULT);
-        });
+        this._grip.set_cursor_type(Clutter.CursorType.NWSE_RESIZE);
         this._footer.add_child(this._grip);
         this.actor.add_child(this._footer);
 
@@ -181,13 +181,14 @@ export class Note {
 
     _updateButtons() {
         const show = this.actor.hover;
-        this._closeBtn.opacity = show ? 255 : 0;
-        this._plusBtn.opacity = show ? 255 : 0;
+        // hidden (not just transparent) so the collapsed preview gets the width
+        for (const b of [this._closeBtn, this._collapseBtn, this._colorBtn, this._pinBtn, this._plusBtn])
+            b.visible = show;
+        this._collapseBtn.child.icon_name = this.data.collapsed ? 'pan-end-symbolic' : 'pan-down-symbolic';
         // pin shows its state: bright = floating on top, dim = on the desktop
         // pinned = filled circle behind the pin; unpinned = no circle, dimmer
-        this._pinBtn.opacity = show ? (this.data.pinned ? 255 : 120) : 0;
+        this._pinBtn.opacity = this.data.pinned ? 255 : 120;
         this._pinBtn.style = this.data.pinned ? 'background-color: rgba(0,0,0,0.22);' : '';
-        this._colorBtn.opacity = show ? 255 : 0;
     }
 
     // Style / state ------------------------------------------------------------
@@ -250,6 +251,7 @@ export class Note {
     toggleCollapsed() {
         this.data.collapsed = !this.data.collapsed;
         this._applyCollapsed();
+        this._updateButtons();
         this._manager.changed();
     }
 
@@ -316,7 +318,7 @@ export class Note {
     _isOnButton(event) {
         const src = global.stage.get_event_actor(event);
         if (!src) return false;
-        return [this._closeBtn, this._colorBtn, this._pinBtn, this._plusBtn].some(b => src === b || b.contains(src));
+        return [this._closeBtn, this._collapseBtn, this._colorBtn, this._pinBtn, this._plusBtn].some(b => src === b || b.contains(src));
     }
 
     _onHeaderEvent(actor, event) {
@@ -341,7 +343,7 @@ export class Note {
         this._lastPress = now;
         this.raise();
         const [px, py] = event.get_coords();
-        this._beginDrag(px, py, (dx, dy, ox, oy) => {
+        this._beginDrag(this._header, px, py, (dx, dy, ox, oy) => {
             this._moveTo(ox + dx, oy + dy);
         }, () => {
             this._manager.changed();
@@ -368,8 +370,7 @@ export class Note {
         const startW = this.actor.width;
         const startH = this.actor.height;
         const [px, py] = event.get_coords();
-        this._setCursor(Clutter.CursorType.SE_RESIZE);
-        this._beginDrag(px, py, (dx, dy) => {
+        this._beginDrag(this._grip, px, py, (dx, dy) => {
             this.data.w = Math.round(Math.max(MIN_W, startW + dx));
             this.data.h = Math.round(Math.max(MIN_H, startH + dy));
             this.actor.set_size(this.data.w, this.data.h);
@@ -377,24 +378,23 @@ export class Note {
         return Clutter.EVENT_STOP;
     }
 
-    // Shared drag helper: tracks pointer on the stage until button release.
-    _beginDrag(px, py, onMove, onEnd) {
+    // Shared drag helper: grab the pointer on `source` until button release.
+    _beginDrag(source, px, py, onMove, onEnd) {
         this._endDrag();
         const ox = this.actor.x;
         const oy = this.actor.y;
         this._dragEnd = onEnd;
-        this._stageId = global.stage.connect('captured-event', (stage, ev) => {
+        this._dragSource = source;
+        this._dragGrab = global.stage.grab(source);
+        this._stageId = source.connect('captured-event', (a, ev) => {
             const t = ev.type();
             if (t === Clutter.EventType.MOTION) {
-                if (!(ev.get_state() & Clutter.ModifierType.BUTTON1_MASK)) {
-                    this._endDrag();
-                    return Clutter.EVENT_PROPAGATE;
-                }
                 const [x, y] = ev.get_coords();
                 onMove(x - px, y - py, ox, oy);
                 return Clutter.EVENT_STOP;
             }
-            if (t === Clutter.EventType.BUTTON_RELEASE) {
+            if (t === Clutter.EventType.BUTTON_RELEASE || t === Clutter.EventType.TOUCH_END
+                || t === Clutter.EventType.TOUCH_CANCEL) {
                 this._endDrag();
                 return Clutter.EVENT_STOP;
             }
@@ -402,46 +402,17 @@ export class Note {
         });
     }
 
-    _setCursor(cursor) {
-        try { global.display.set_cursor(cursor); } catch (e) { console.error(`[Sticky Notes] cursor: ${e}`); }
-    }
-
     _endDrag() {
-        if (this._stageId) {
-            if (!this._grip.hover) this._setCursor(Clutter.CursorType.DEFAULT);
-            global.stage.disconnect(this._stageId);
-            this._stageId = 0;
-            const cb = this._dragEnd;
-            this._dragEnd = null;
-            cb?.();
-        }
-    }
-
-    /** Ask before deleting a note that has content; empty notes go straight away. */
-    requestDelete() {
-        if ((this.data.text ?? '').trim() === '') {
-            this._manager.deleteNote(this);
-            return;
-        }
-        const dialog = new ModalDialog.ModalDialog({destroyOnClose: true});
-        dialog.contentLayout.add_child(new St.Label({
-            text: 'Delete this note?\nThis can\u2019t be undone.',
-            style: 'text-align: center; font-size: 13px; padding: 8px 12px;',
-        }));
-        dialog.addButton({
-            label: 'Cancel',
-            action: () => dialog.close(),
-            key: Clutter.KEY_Escape,
-        });
-        dialog.addButton({
-            label: 'Delete',
-            action: () => {
-                dialog.close();
-                this._manager.deleteNote(this);
-            },
-            default: true,
-        });
-        dialog.open();
+        if (!this._stageId) return;
+        const id = this._stageId;
+        this._stageId = 0;
+        try { this._dragSource.disconnect(id); } catch (e) { /* source gone */ }
+        try { this._dragGrab?.dismiss(); } catch (e) { /* already dismissed */ }
+        this._dragGrab = null;
+        this._dragSource = null;
+        const cb = this._dragEnd;
+        this._dragEnd = null;
+        cb?.();
     }
 
     // Context menu -------------------------------------------------------------------
@@ -489,7 +460,6 @@ export class Note {
         // each step guarded so one failure can never leave the actor on screen
         const safe = fn => { try { fn(); } catch (e) { console.error(`[Sticky Notes] destroy: ${e}`); } };
         safe(() => this._endDrag());
-        safe(() => this._setCursor(Clutter.CursorType.DEFAULT));
         safe(() => this._tipHiders?.forEach(h => h()));
         safe(() => this._grabHelper?.ungrab({actor: this.actor}));
         safe(() => this._menu?.destroy());
