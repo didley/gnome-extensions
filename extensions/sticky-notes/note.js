@@ -31,7 +31,7 @@ export class Note {
     constructor(manager, data) {
         this._manager = manager;
         this.data = data;
-        this._layer = null; // 'chrome' | 'background' | null
+        this._layer = null; // 'chrome' (pinned) | 'window' | null
         this._lastPress = 0;
         this._stageId = 0;
         this._build();
@@ -148,6 +148,7 @@ export class Note {
         // Keyboard focus: a note is not a window, so take a grab on click.
         this._grabHelper = new GrabHelper.GrabHelper(this.actor);
         this._body.connect('captured-event', (a, event) => {
+            if (event.type() === Clutter.EventType.BUTTON_PRESS) this.raise();
             if (event.type() === Clutter.EventType.BUTTON_PRESS && !this._grabbed) {
                 this._grabbed = true;
                 this._grabHelper.grab({
@@ -183,7 +184,9 @@ export class Note {
         this._closeBtn.opacity = show ? 255 : 0;
         this._plusBtn.opacity = show ? 255 : 0;
         // pin shows its state: bright = floating on top, dim = on the desktop
-        this._pinBtn.opacity = show ? (this.data.pinned ? 255 : 110) : 0;
+        // pinned = filled circle behind the pin; unpinned = no circle, dimmer
+        this._pinBtn.opacity = show ? (this.data.pinned ? 255 : 120) : 0;
+        this._pinBtn.style = this.data.pinned ? 'background-color: rgba(0,0,0,0.22);' : '';
         this._colorBtn.opacity = show ? 255 : 0;
     }
 
@@ -262,20 +265,41 @@ export class Note {
     _putInLayer() {
         if (this._layer) return;
         if (this.data.pinned) {
+            // above everything, like an always-on-top window
             Main.layoutManager.addChrome(this.actor);
             this._layer = 'chrome';
-            console.log(`[StickyDBG] -> chrome parent=${this.actor.get_parent()} uiGroup=${Main.layoutManager.uiGroup}`);
         } else {
-            Main.layoutManager._backgroundGroup.add_child(this.actor);
-            this._layer = 'background';
-            console.log(`[StickyDBG] -> background parent=${this.actor.get_parent()}`);
+            // among the app windows: behaves like a normal window. It lives in
+            // the window group (tracked so it receives input), comes to the
+            // front when clicked and drops behind when another window is focused.
+            global.window_group.add_child(this.actor);
+            Main.layoutManager.trackChrome(this.actor);
+            this._layer = 'window';
+            this._lower();
+            this._focusId = global.display.connect('notify::focus-window', () => {
+                if (global.display.focus_window) this._lower();
+            });
         }
     }
 
     _removeFromLayer() {
-        if (this._layer === 'chrome') Main.layoutManager.removeChrome(this.actor);
-        else if (this._layer === 'background') Main.layoutManager._backgroundGroup.remove_child(this.actor);
+        if (this._focusId) {
+            global.display.disconnect(this._focusId);
+            this._focusId = 0;
+        }
+        if (this._layer === 'chrome') {
+            Main.layoutManager.removeChrome(this.actor);
+        } else if (this._layer === 'window') {
+            Main.layoutManager.untrackChrome(this.actor);
+            global.window_group.remove_child(this.actor);
+        }
         this._layer = null;
+    }
+
+    /** Window-layer notes: just above the desktop background, below app windows. */
+    _lower() {
+        if (this._layer !== 'window') return;
+        global.window_group.set_child_above_sibling(this.actor, Main.layoutManager._backgroundGroup);
     }
 
     raise() {
