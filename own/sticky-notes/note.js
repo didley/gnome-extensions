@@ -1,6 +1,7 @@
 import Clutter from 'gi://Clutter';
 import St from 'gi://St';
 import GLib from 'gi://GLib';
+import Gio from 'gi://Gio';
 import Pango from 'gi://Pango';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js';
@@ -20,7 +21,7 @@ import {DoubleClick} from './doubleclick.js';
  */
 export class Note {
     /**
-     * @param {{newNote(from: Note): void, deleteNote(note: Note): void, changed(): void}} manager
+     * @param {{path: string, newNote(from: Note): void, deleteNote(note: Note): void, changed(): void}} manager
      * @param {{text: string, color: string, x: number, y: number, w: number, h: number,
      *          collapsed: boolean, minimized: boolean}} data  persisted state (mutated in place)
      */
@@ -120,7 +121,14 @@ export class Note {
     }
 
     _buildFooter() {
-        this._grip = new St.Label({text: '◢', style_class: 'sticky-grip', reactive: true});
+        // A drawn triangle that touches its bounding box on the right and bottom,
+        // so the gaps to the note's edges are equal (a text glyph isn't).
+        this._grip = new St.Icon({
+            gicon: Gio.FileIcon.new(Gio.File.new_for_path(`${this._manager.path}/icons/grip.svg`)),
+            icon_size: 12,
+            style_class: 'sticky-grip',
+            reactive: true,
+        });
         this._grip.set_cursor_type(Clutter.CursorType.NWSE_RESIZE);
         this._grip.connect('captured-event', (a, event) => this._onGripEvent(event));
 
