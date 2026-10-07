@@ -39,6 +39,7 @@ export default class StickyNotesExtension extends Extension {
             return Clutter.EVENT_STOP;
         });
         this._button.menu.connect('open-state-changed', (menu, open) => {
+            console.log('[StickyDBG] menu open-state ' + open);
             if (open) this._rebuildMenu();
         });
         Main.panel.addToStatusArea(this.uuid, this._button, 0, 'right');
@@ -79,7 +80,6 @@ export default class StickyNotesExtension extends Extension {
         const note = this._add({
             text: '', color: from?.data.color ?? 'Yellow',
             x, y, w: 220, h: 200, collapsed: false,
-            pinned: from?.data.pinned ?? true,
         });
         note.raise();
         this.changed();
@@ -102,7 +102,6 @@ export default class StickyNotesExtension extends Extension {
             x: data.x ?? m.x + 100, y: data.y ?? m.y + 100,
             w: data.w ?? 220, h: data.h ?? 200,
             collapsed: !!data.collapsed,
-            pinned: data.pinned ?? true,
             minimized: !!data.minimized,
         };
         this._nextId = Math.max(this._nextId, d.id + 1);
@@ -119,6 +118,7 @@ export default class StickyNotesExtension extends Extension {
             this.newNote();
             return;
         }
+        console.log('[StickyDBG] panel click -> menu toggle');
         this._button.menu.toggle();
     }
 
@@ -137,7 +137,7 @@ export default class StickyNotesExtension extends Extension {
                 const item = new PopupMenu.PopupMenuItem(note.title);
                 // dot = minimized (click to restore); no dot = on screen (click to bring forward)
                 item.setOrnament(note.isMinimized ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NONE);
-                item.connect('activate', () => note.restore());
+                item.connect('activate', () => { console.log('[StickyDBG] menu restore ' + note.title); note.restore(); });
                 menu.addMenuItem(item);
             }
             menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
