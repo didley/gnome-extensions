@@ -4,7 +4,6 @@ import GLib from 'gi://GLib';
 import Pango from 'gi://Pango';
 import Cogl from 'gi://Cogl';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
-import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js';
 import * as GrabHelper from 'resource:///org/gnome/shell/ui/grabHelper.js';
 
@@ -361,10 +360,6 @@ export class Note {
         if (this._isOnButton(event)) return Clutter.EVENT_PROPAGATE;
 
         const button = event.get_button();
-        if (button === Clutter.BUTTON_SECONDARY) {
-            this._openMenu();
-            return Clutter.EVENT_STOP;
-        }
         if (button !== Clutter.BUTTON_PRIMARY) return Clutter.EVENT_PROPAGATE;
 
         const now = GLib.get_monotonic_time() / 1000;
@@ -661,41 +656,6 @@ export class Note {
         this._entry.grab_key_focus();
     }
 
-    // Context menu -------------------------------------------------------------------
-
-    _openMenu() {
-        if (!this._menu) {
-            this._menu = new PopupMenu.PopupMenu(this._header, 0.5, St.Side.TOP);
-            this._menu.actor.add_style_class_name('app-well-menu');
-            Main.uiGroup.add_child(this._menu.actor);
-            this._menu.actor.hide();
-            this._menuManager = new PopupMenu.PopupMenuManager(this._header);
-            this._menuManager.addMenu(this._menu);
-        }
-        const menu = this._menu;
-        menu.removeAll();
-
-        const colorMenu = new PopupMenu.PopupSubMenuMenuItem('Color');
-        for (const name of Object.keys(COLORS)) {
-            const item = new PopupMenu.PopupMenuItem(name);
-            item.setOrnament(this.data.color === name
-                ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NONE);
-            item.connect('activate', () => this.setColor(name));
-            colorMenu.menu.addMenuItem(item);
-        }
-        menu.addMenuItem(colorMenu);
-
-        const collapse = new PopupMenu.PopupMenuItem(this.data.collapsed ? 'Expand' : 'Collapse');
-        collapse.connect('activate', () => this.toggleCollapsed());
-        menu.addMenuItem(collapse);
-
-        menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        const del = new PopupMenu.PopupMenuItem('Delete note');
-        del.connect('activate', () => this.requestDelete());
-        menu.addMenuItem(del);
-
-        menu.open();
-    }
 
     destroy() {
         // each step guarded so one failure can never leave the actor on screen
@@ -703,9 +663,7 @@ export class Note {
         safe(() => this._endDrag());
         safe(() => this._tipHiders?.forEach(h => h()));
         safe(() => this._grabHelper?.ungrab({actor: this.actor}));
-        safe(() => this._menu?.destroy());
         safe(() => this._closeTextMenu());
-        this._menu = null;
         safe(() => this._removeFromLayer());
         safe(() => this.actor.destroy());
     }
