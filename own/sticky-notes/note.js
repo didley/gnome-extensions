@@ -107,7 +107,9 @@ export class Note {
             },
             onEnd: () => this._manager.changed(),
         });
-        addClick(header, {clicks: 2, onPress: true, shouldHandle: notOnButton, onClick: () => this.toggleCollapsed()});
+        // Recognised after the second click completes, not on press: a gesture that fires on press
+        // cancels the competing drag and button gestures.
+        addClick(header, {clicks: 2, shouldHandle: notOnButton, onClick: () => this.toggleCollapsed()});
         return header;
     }
 
