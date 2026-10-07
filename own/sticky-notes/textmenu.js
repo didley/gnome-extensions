@@ -1,5 +1,6 @@
 import Clutter from 'gi://Clutter';
 import St from 'gi://St';
+import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as GrabHelper from 'resource:///org/gnome/shell/ui/grabHelper.js';
 import {selectionRows} from './textutil.js';
@@ -53,7 +54,7 @@ export class TextMenu {
             Math.round(Math.min(y, m.y + m.height - h - 4)));
 
         this._box = box;
-        this._grab = new GrabHelper.GrabHelper(box);
+        this._grab = new GrabHelper.GrabHelper(box, {actionMode: Shell.ActionMode.NORMAL});
         this._grab.grab({actor: box, focus: nt.actor, onUngrab: () => this.close()});
         nt.focus();
         this._paintSelection();

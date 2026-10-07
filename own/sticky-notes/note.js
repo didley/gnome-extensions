@@ -2,6 +2,7 @@ import Clutter from 'gi://Clutter';
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
+import Shell from 'gi://Shell';
 import Pango from 'gi://Pango';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js';
@@ -126,7 +127,9 @@ export class Note {
         this._body.set_child(box);
 
         // A note is not a window, so keyboard focus needs an explicit grab on click.
-        this._grabHelper = new GrabHelper.GrabHelper(this.actor);
+        // actionMode NORMAL keeps shell shortcuts (Alt+Tab, workspace switching) working while
+        // the note has focus; the default (NONE) disables them for the duration of the grab.
+        this._grabHelper = new GrabHelper.GrabHelper(this.actor, {actionMode: Shell.ActionMode.NORMAL});
         // On the whole body, not just the text widget: an empty note's text is only one line tall.
         addClick(this._body, {onPress: true, onClick: () => { this.raise(); this._focusText(); }});
         addClick(this._body, {
