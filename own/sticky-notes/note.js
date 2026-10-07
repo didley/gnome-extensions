@@ -58,7 +58,6 @@ export class Note {
             track_hover: true,
         });
         this.actor.connect('notify::hover', () => this._updateButtons());
-        addClick(this.actor, {onPress: true, onClick: () => this.raise()});
         this.actor.add_child(this._buildHeader());
         this.actor.add_child(this._buildBody());
         this.actor.add_child(this._buildFooter());
@@ -126,11 +125,12 @@ export class Note {
 
         // A note is not a window, so keyboard focus needs an explicit grab on click.
         this._grabHelper = new GrabHelper.GrabHelper(this.actor);
-        addClick(this._text.actor, {onPress: true, onClick: () => this._focusText()});
+        addClick(this._text.actor, {onPress: true, onClick: () => { this.raise(); this._focusText(); }});
         addClick(this._text.actor, {
             button: Clutter.BUTTON_SECONDARY,
             onPress: true,
             onClick: g => {
+                this.raise();
                 this._focusText();
                 const {x, y} = g.get_coords_abs();
                 this._text.menu.open(x, y);
