@@ -33,6 +33,7 @@ export class Note {
         this.data = data;
         this._layer = null; // 'chrome' (pinned) | 'window' | null
         this._lastPress = 0;
+        this._shown = true;
         this._stageId = 0;
         this._build();
         this._applyColor();
@@ -64,10 +65,12 @@ export class Note {
         });
         this._closeBtn = this._makeButton('window-close-symbolic', () => this.requestDelete());
         this._plusBtn = this._makeButton('list-add-symbolic', () => this._manager.newNote(this));
+        this._minBtn = this._makeButton('window-minimize-symbolic', () => this.minimize());
         this._collapseBtn = this._makeButton('pan-down-symbolic', () => this.toggleCollapsed());
         this._colorBtn = this._makeButton('color-select-symbolic', () => this.cycleColor());
         this._pinBtn = this._makeButton('view-pin-symbolic', () => this.setPinned(!this.data.pinned));
         this._tooltip(this._closeBtn, () => 'Delete note');
+        this._tooltip(this._minBtn, () => 'Minimize to the panel menu');
         this._tooltip(this._collapseBtn, () => (this.data.collapsed ? 'Expand note' : 'Collapse note'));
         this._tooltip(this._colorBtn, () => `Change color (${this.data.color})`);
         this._tooltip(this._pinBtn, () => `Float on top: ${this.data.pinned ? 'on' : 'off'}`);
@@ -80,6 +83,7 @@ export class Note {
         this._preview.clutter_text.set_ellipsize(Pango.EllipsizeMode.END);
         this._preview.clutter_text.set_single_line_mode(true);
         this._header.add_child(this._closeBtn);
+        this._header.add_child(this._minBtn);
         this._header.add_child(this._collapseBtn);
         this._header.add_child(this._preview);
         this._header.add_child(this._colorBtn);
@@ -182,7 +186,7 @@ export class Note {
     _updateButtons() {
         const show = this.actor.hover;
         // hidden (not just transparent) so the collapsed preview gets the width
-        for (const b of [this._closeBtn, this._collapseBtn, this._colorBtn, this._pinBtn, this._plusBtn])
+        for (const b of [this._closeBtn, this._minBtn, this._collapseBtn, this._colorBtn, this._pinBtn, this._plusBtn])
             b.visible = show;
         this._collapseBtn.child.icon_name = this.data.collapsed ? 'pan-end-symbolic' : 'pan-down-symbolic';
         // pin shows its state: bright = floating on top, dim = on the desktop
@@ -278,16 +282,33 @@ export class Note {
             Main.layoutManager.trackChrome(this.actor);
             this._layer = 'window';
             this._lower();
-            this._focusId = global.display.connect('notify::focus-window', () => {
-                if (global.display.focus_window) this._lower();
+            this._focusId = global.display.connect('restacked', () => {
+                // another window came forward: drop back behind it, unless the
+                // note is being used (typing or dragging)
+                if (this._grabbed || this._stageId) return;
+                this._lowerIdle();
             });
         }
+    }
+
+    _lowerIdle() {
+        if (this._lowerId) return;
+        // after mutter has finished restacking, otherwise it re-raises over us
+        this._lowerId = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+            this._lowerId = 0;
+            this._lower();
+            return GLib.SOURCE_REMOVE;
+        });
     }
 
     _removeFromLayer() {
         if (this._focusId) {
             global.display.disconnect(this._focusId);
             this._focusId = 0;
+        }
+        if (this._lowerId) {
+            GLib.source_remove(this._lowerId);
+            this._lowerId = 0;
         }
         if (this._layer === 'chrome') {
             Main.layoutManager.removeChrome(this.actor);
@@ -309,8 +330,34 @@ export class Note {
         parent?.set_child_above_sibling(this.actor, null);
     }
 
+    /** Manager-level show/hide (panel toggle); minimized notes stay hidden. */
     setVisible(v) {
-        this.actor.visible = v;
+        this._shown = v;
+        this.actor.visible = v && !this.data.minimized;
+    }
+
+    minimize() {
+        this.data.minimized = true;
+        this.actor.visible = false;
+        this._manager.changed();
+    }
+
+    restore() {
+        this.data.minimized = false;
+        this._shown = true;
+        this.actor.visible = true;
+        this.raise();
+        this._manager.changed();
+    }
+
+    get isMinimized() {
+        return !!this.data.minimized;
+    }
+
+    /** First non-empty line, for menus. */
+    get title() {
+        const first = (this.data.text ?? '').split('\n').find(l => l.trim() !== '')?.trim() ?? '';
+        return first === '' ? 'Empty note' : (first.length > 32 ? first.slice(0, 31) + '\u2026' : first);
     }
 
     // Header events: drag, double-click, right-click menu ------------------------
@@ -318,7 +365,7 @@ export class Note {
     _isOnButton(event) {
         const src = global.stage.get_event_actor(event);
         if (!src) return false;
-        return [this._closeBtn, this._collapseBtn, this._colorBtn, this._pinBtn, this._plusBtn].some(b => src === b || b.contains(src));
+        return [this._closeBtn, this._minBtn, this._collapseBtn, this._colorBtn, this._pinBtn, this._plusBtn].some(b => src === b || b.contains(src));
     }
 
     _onHeaderEvent(actor, event) {

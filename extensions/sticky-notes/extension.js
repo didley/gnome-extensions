@@ -5,6 +5,7 @@ import Gio from 'gi://Gio';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Note} from './note.js';
 import {Store} from './store.js';
 
@@ -23,7 +24,7 @@ export default class StickyNotesExtension extends Extension {
 
         // Panel icon. GNOME 50's PanelMenu.Button swallows the press, so
         // neither button-press-event nor 'clicked' fire; captured-event does.
-        this._button = new PanelMenu.Button(0.0, 'Sticky Notes', true);
+        this._button = new PanelMenu.Button(0.0, 'Sticky Notes', false);
         this._button.add_child(new St.Icon({
             gicon: Gio.FileIcon.new(Gio.File.new_for_path(`${this.path}/icons/sticky-note-symbolic.svg`)),
             style_class: 'system-status-icon',
@@ -34,8 +35,11 @@ export default class StickyNotesExtension extends Extension {
                 return Clutter.EVENT_PROPAGATE;
             if (t === Clutter.EventType.BUTTON_PRESS && event.get_button() !== Clutter.BUTTON_PRIMARY)
                 return Clutter.EVENT_PROPAGATE;
-            this._togglePanel();
+            this._onPanelClick();
             return Clutter.EVENT_STOP;
+        });
+        this._button.menu.connect('open-state-changed', (menu, open) => {
+            if (open) this._rebuildMenu();
         });
         Main.panel.addToStatusArea(this.uuid, this._button, 0, 'right');
     }
@@ -99,6 +103,7 @@ export default class StickyNotesExtension extends Extension {
             w: data.w ?? 220, h: data.h ?? 200,
             collapsed: !!data.collapsed,
             pinned: data.pinned ?? true,
+            minimized: !!data.minimized,
         };
         this._nextId = Math.max(this._nextId, d.id + 1);
         const note = new Note(this, d);
@@ -107,13 +112,40 @@ export default class StickyNotesExtension extends Extension {
         return note;
     }
 
-    _togglePanel() {
+    // Panel icon: no notes yet -> make one; otherwise open the menu.
+    _onPanelClick() {
         if (this._notes.length === 0) {
             this._visible = true;
             this.newNote();
             return;
         }
-        this._visible = !this._visible;
-        for (const n of this._notes) n.setVisible(this._visible);
+        this._button.menu.toggle();
+    }
+
+    _rebuildMenu() {
+        const menu = this._button.menu;
+        menu.removeAll();
+
+        const add = new PopupMenu.PopupMenuItem('New note');
+        add.connect('activate', () => this.newNote());
+        menu.addMenuItem(add);
+
+        const anyHidden = this._notes.some(n => n.isMinimized);
+        if (this._notes.length > 0) {
+            menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+            for (const note of this._notes) {
+                const item = new PopupMenu.PopupMenuItem(note.title);
+                // dot = minimized (click to restore); no dot = on screen (click to bring forward)
+                item.setOrnament(note.isMinimized ? PopupMenu.Ornament.DOT : PopupMenu.Ornament.NONE);
+                item.connect('activate', () => note.restore());
+                menu.addMenuItem(item);
+            }
+            menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+            const all = new PopupMenu.PopupMenuItem(anyHidden ? 'Show all notes' : 'Minimize all notes');
+            all.connect('activate', () => {
+                for (const n of this._notes) anyHidden ? n.restore() : n.minimize();
+            });
+            menu.addMenuItem(all);
+        }
     }
 }
