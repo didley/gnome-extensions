@@ -17,7 +17,11 @@ P
 [ -n "$uuid" ] || { echo "unknown extension: $name" >&2; exit 2; }
 
 start=$(date '+%Y-%m-%d %H:%M:%S')
-"$root/scripts/dev.sh" "$name" >/dev/null 2>&1 || true
+if ! reload_out=$("$root/scripts/dev.sh" "$name" 2>&1); then
+  echo "SMOKE FAILED: could not hot-reload $uuid"
+  printf '%s\n' "$reload_out"
+  exit 1
+fi
 sleep 3
 
 state=$(gnome-extensions info "$uuid" 2>/dev/null | awk '/State:/ {print $2}')

@@ -42,6 +42,9 @@ export default class DevLoader extends Extension {
         this._cancelled = false;
         const [, bytes] = Gio.File.new_for_path(`${this.path}/impl/VERSION`).load_contents(null);
         const v = new TextDecoder().decode(bytes).trim();
+        // proof for scripts/dev.sh that the shell ran this loader (not cached older code)
+        Gio.File.new_for_path(`${this.path}/impl/LOADED`).replace_contents(
+            new TextEncoder().encode(v), null, false, Gio.FileCreateFlags.NONE, null);
         import(`file://${this.path}/impl/extension.js?v=${v}`).then(m => {
             if (this._cancelled) return;
             this._impl = new m.default(this.metadata);
@@ -60,8 +63,15 @@ if ! gnome-extensions info "$uuid" >/dev/null 2>&1; then
   echo "NEW uuid: $uuid is installed but the shell can't see it yet -> log out/in ONCE, then run this script after each edit."
   exit 0
 fi
+rm -f "$dest/impl/LOADED"
 gnome-extensions disable "$uuid" 2>/dev/null || true
 sleep 0.3
 gnome-extensions enable "$uuid"
+sleep 1
+if [ "$(cat "$dest/impl/LOADED" 2>/dev/null)" != "$v" ]; then
+  echo "NOT RELOADED: the shell is running cached code for $uuid (e.g. a release build loaded at login)."
+  echo "-> log out and back in ONCE with the dev loader installed; after that this script hot-reloads."
+  exit 3
+fi
 gnome-extensions info "$uuid" | grep -E "State|Enabled"
 echo "reloaded v=$v   logs: journalctl -f _COMM=gnome-shell | grep -i -E 'sticky|dev-loader|JS ERROR'"
