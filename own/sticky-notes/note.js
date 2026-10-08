@@ -12,6 +12,7 @@ import {colorPair, nextColor} from './colors.js';
 import {clampPosition, clampSize} from './geometry.js';
 import {noteTitle, firstLine} from './textutil.js';
 import {addClick, addDrag} from './gestures.js';
+import {DoubleClick} from './doubleclick.js';
 import {addTooltip} from './tooltip.js';
 import {NoteText} from './textbox.js';
 
@@ -29,6 +30,7 @@ export class Note {
         this._manager = manager;
         this.data = data;
         this._cleanups = [];
+        this._headerClicks = new DoubleClick();
         this._onChrome = false;
 
         this._build();
@@ -94,13 +96,21 @@ export class Note {
         for (const child of [this._newBtn, this._colorBtn, this._preview, this._minBtn, this._collapseBtn, this._closeBtn])
             header.add_child(child);
 
-        // Dragging the header moves the note; double-clicking it collapses. Presses
-        // on the header buttons are left to the buttons.
-        const notOnButton = event => !this._isOnButton(event);
+        // Dragging the header moves the note; double-clicking it collapses. Presses on the
+        // header buttons are left to the buttons.
+        // The double-click is timed here rather than with a ClickGesture: the drag takes a pointer
+        // grab as the button goes down, and that cancels any other gesture waiting to recognise.
         let origin = null;
         addDrag(header, {
             grabActor: this.actor,
-            shouldHandle: notOnButton,
+            shouldHandle: event => {
+                if (this._isOnButton(event)) return false;
+                if (this._headerClicks.press(GLib.get_monotonic_time() / 1000)) {
+                    this.toggleCollapsed();
+                    return false; // a double-click is not the start of a drag
+                }
+                return true;
+            },
             onBegin: () => { origin = {x: this.actor.x, y: this.actor.y}; this.raise(); },
             onMove: (dx, dy) => {
                 const pos = clampPosition(origin.x + dx, origin.y + dy, this.actor.width, Main.layoutManager.primaryMonitor);
@@ -109,9 +119,6 @@ export class Note {
             },
             onEnd: () => this._manager.changed(),
         });
-        // Recognised after the second click completes, not on press: a gesture that fires on press
-        // cancels the competing drag and button gestures.
-        addClick(header, {clicks: 2, shouldHandle: notOnButton, onClick: () => this.toggleCollapsed()});
         return header;
     }
 
