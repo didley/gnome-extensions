@@ -1,6 +1,7 @@
 // Input helpers built on Clutter's gesture/controller classes. These replace the
 // direct event signals (captured-event & co.), which GNOME 51 deprecates.
 import Clutter from 'gi://Clutter';
+import GLib from 'gi://GLib';
 
 /**
  * The shell has its own pan/edge-drag gestures on the stage (overview and workspace
@@ -41,18 +42,51 @@ export function addClick(actor, {button = Clutter.BUTTON_PRIMARY, clicks = 1, on
 /**
  * Primary-button drag on `actor`. Offsets are in stage pixels from where the
  * drag began.
+ *
+ * While a drag is in progress the pointer is grabbed on `grabActor`. Without
+ * that, the shell's own stage gestures see the same pointer events and cancel
+ * the drag partway through (the drag only survived once a note already held a
+ * grab, e.g. with the text focused).
  * @param {Clutter.Actor} actor
- * @param {{shouldHandle?: (event: Clutter.Event) => boolean,
+ * @param {{grabActor?: Clutter.Actor,
+ *          shouldHandle?: (event: Clutter.Event) => boolean,
  *          onBegin?: () => void, onMove: (dx: number, dy: number) => void,
  *          onEnd?: () => void}} opts
  */
-export function addDrag(actor, {shouldHandle, onBegin, onMove, onEnd}) {
+export function addDrag(actor, {grabActor = actor, shouldHandle, onBegin, onMove, onEnd}) {
     const pan = new Clutter.PanGesture();
     pan.set_required_button(Clutter.BUTTON_PRIMARY);
     pan.set_min_n_points(1);
     pan.set_max_n_points(1);
     pan.set_begin_threshold(4); // so a double-click isn't mistaken for a drag
-    if (shouldHandle) pan.connect('should-handle-sequence', (g, event) => shouldHandle(event));
+
+    let grab = null;
+    let safety = 0;
+    const release = () => {
+        if (safety) { GLib.source_remove(safety); safety = 0; }
+        if (!grab) return;
+        const g = grab;
+        grab = null;
+        try { g.dismiss(); } catch (e) { /* already dismissed */ }
+    };
+
+    // Called as the button goes down, before any gesture has been decided.
+    pan.connect('should-handle-sequence', (g, event) => {
+        const handle = shouldHandle ? shouldHandle(event) : true;
+        if (handle && !grab) {
+            grab = global.stage.grab(grabActor);
+            // A stuck grab would freeze all pointer input, so never keep one for long.
+            safety = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 20, () => { safety = 0; release(); return GLib.SOURCE_REMOVE; });
+        }
+        return handle;
+    });
+    // Back to idle / completed / cancelled all mean the sequence is over.
+    pan.connect('notify::state', () => {
+        if (pan.state !== Clutter.GestureState.POSSIBLE && pan.state !== Clutter.GestureState.RECOGNIZING)
+            release();
+    });
+    actor.connect('destroy', release);
+
     pan.connect('recognize', () => onBegin?.());
     pan.connect('pan-update', () => {
         const now = pan.get_centroid_abs();
@@ -62,7 +96,6 @@ export function addDrag(actor, {shouldHandle, onBegin, onMove, onEnd}) {
     pan.connect('end', () => onEnd?.());
     pan.connect('cancel', () => onEnd?.());
     actor.add_action(pan);
-
     coexistWithShell(pan);
     return pan;
 }

@@ -99,6 +99,7 @@ export class Note {
         const notOnButton = event => !this._isOnButton(event);
         let origin = null;
         addDrag(header, {
+            grabActor: this.actor,
             shouldHandle: notOnButton,
             onBegin: () => { origin = {x: this.actor.x, y: this.actor.y}; this.raise(); },
             onMove: (dx, dy) => {
@@ -164,6 +165,7 @@ export class Note {
         this._grip.set_cursor_type(Clutter.CursorType.NWSE_RESIZE);
         let size = null;
         addDrag(this._grip, {
+            grabActor: this.actor,
             onBegin: () => { size = {w: this.actor.width, h: this.actor.height}; },
             onMove: (dx, dy) => {
                 const next = clampSize(size.w + dx, size.h + dy);
