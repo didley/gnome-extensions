@@ -2,27 +2,16 @@ import Clutter from 'gi://Clutter';
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Pango from 'gi://Pango';
-import Cogl from 'gi://Cogl';
 import {History} from './history.js';
 import {TextMenu} from './textmenu.js';
 import {addKeys} from './gestures.js';
 
 /** @type {[number, number, number, number]} */
-const INK = [0.17, 0.17, 0.17, 1];
-
-/** @param {[number, number, number, number]} rgbaValues */
-function rgba([r, g, b, a]) {
-    const c = new Cogl.Color();
-    c.init_from_4f(r, g, b, a);
-    return c;
-}
-
 /**
- * The editable text of a note.
- *
- * A bare Clutter.Text rather than St.Entry: it fills the whole note and draws
- * from the top (St.Entry centres vertically). The price is that clipboard,
- * undo/redo and the context menu have to be provided here.
+ * The editable text of a note: a multi-line St.Entry, the same widget the shell
+ * uses for its own text fields, so the caret, selection colours and
+ * Ctrl+C / X / V / A come from the theme and St. Undo/redo and the context
+ * menu are ours (St.Entry has neither).
  */
 export class NoteText {
     /** @param {string} initial  @param {(text: string) => void} onChange */
@@ -30,23 +19,20 @@ export class NoteText {
         this._history = new History(initial);
         this._applying = false;
 
-        const t = this.actor = new Clutter.Text({
-            editable: true,
-            reactive: true,
-            selectable: true,
-            single_line_mode: false,
-            activatable: false,
-            line_wrap: true,
-            line_wrap_mode: Pango.WrapMode.WORD_CHAR,
-            font_name: 'Sans 10',
+        // `widget` is what goes in the layout; `actor` is its Clutter.Text, which
+        // has the text API (selection, caret, ...) and is where key focus lives.
+        this.widget = new St.Entry({
+            style_class: 'sticky-entry',
+            can_focus: true,
             x_expand: true,
-            y_expand: true,
-            x_align: Clutter.ActorAlign.FILL,
-            y_align: Clutter.ActorAlign.FILL,
+            y_expand: false,
+            y_align: Clutter.ActorAlign.START,
         });
-        t.color = rgba(INK);
-        t.cursor_color = rgba(INK);
-        t.selection_color = rgba([0, 0, 0, 0.2]);
+        const t = this.actor = this.widget.get_clutter_text();
+        t.set_single_line_mode(false);
+        t.set_activatable(false); // Enter inserts a new line
+        t.set_line_wrap(true);
+        t.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR);
         t.set_text(initial);
 
         t.connect('text-changed', () => {
@@ -54,7 +40,7 @@ export class NoteText {
             if (!this._applying) this._history.record(text, GLib.get_monotonic_time() / 1000);
             onChange(text);
         });
-        addKeys(t, (key, state) => this._onKey(key, state));
+        addKeys(this.widget, (key, state) => this._onKey(key, state));
 
         this.menu = new TextMenu(this);
     }
@@ -64,7 +50,7 @@ export class NoteText {
     get canUndo() { return this._history.canUndo; }
     get canRedo() { return this._history.canRedo; }
 
-    focus() { this.actor.grab_key_focus(); }
+    focus() { this.widget.grab_key_focus(); }
 
     copy() {
         const sel = this.selection;
@@ -112,16 +98,12 @@ export class NoteText {
         const shift = !!(state & Clutter.ModifierType.SHIFT_MASK);
 
         switch (key) {
-        case Clutter.KEY_c: case Clutter.KEY_C: this.copy(); break;
-        case Clutter.KEY_x: case Clutter.KEY_X: this.cut(); break;
-        case Clutter.KEY_v: case Clutter.KEY_V: this.paste(); break;
-        case Clutter.KEY_a: case Clutter.KEY_A: this.selectAll(); break;
         case Clutter.KEY_y: case Clutter.KEY_Y: this.redo(); break;
         case Clutter.KEY_z: case Clutter.KEY_Z:
             if (shift) this.redo(); else this.undo();
             break;
         default:
-            return false;
+            return false; // copy / cut / paste / select all: St.Entry handles them
         }
         return true;
     }

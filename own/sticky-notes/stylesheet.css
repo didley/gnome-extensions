@@ -15,3 +15,6 @@
 .sticky-menu-item:hover { background-color: rgba(255,255,255,0.14); }
 .sticky-menu-item.disabled { color: rgba(255,255,255,0.35); }
 .sticky-menu-sep { height: 1px; background-color: rgba(255,255,255,0.14); margin: 4px 6px; }
+
+.sticky-entry { background: transparent; border: none; box-shadow: none; padding: 0; margin: 0; min-height: 0; color: #2b2b2b; caret-color: #2b2b2b; selection-background-color: rgba(0,0,0,0.2); font-size: 13px; }
+.sticky-entry:focus { background: transparent; border: none; box-shadow: none; }

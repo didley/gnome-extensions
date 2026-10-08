@@ -129,9 +129,16 @@ export class Note {
             this._manager.changed();
         });
         const box = new St.BoxLayout({x_expand: true, y_expand: true, style: 'padding: 6px 10px;'});
-        box.add_child(this._text.actor);
+        box.add_child(this._text.widget);
 
-        this._body = new St.ScrollView({x_expand: true, y_expand: true, overlay_scrollbars: true, clip_to_allocation: true});
+        this._body = new St.ScrollView({
+            x_expand: true,
+            y_expand: true,
+            overlay_scrollbars: true,
+            clip_to_allocation: true,
+            // never scroll sideways: the text wraps to the note's width and fills it
+            hscrollbar_policy: St.PolicyType.NEVER,
+        });
         this._body.set_child(box);
 
         // A note is not a window, so keyboard focus needs an explicit grab on click.
@@ -146,14 +153,14 @@ export class Note {
         });
         this._cleanups.push(() => global.display.disconnect(focusId));
         // On the whole body, not just the text widget: an empty note's text is only one line tall.
-        addClick(this._body, {onPress: true, onClick: () => { this.raise(); this._focusText(); }});
+        addClick(this._body, {onPress: true, onClick: g => { this.raise(); this._focusText(g.get_coords_abs().y); }});
         addClick(this._body, {
             button: Clutter.BUTTON_SECONDARY,
             onPress: true,
             onClick: g => {
-                this.raise();
-                this._focusText();
                 const {x, y} = g.get_coords_abs();
+                this.raise();
+                this._focusText(y);
                 this._text.menu.open(x, y);
             },
         });
@@ -275,16 +282,26 @@ export class Note {
         return !!src && this._buttons.some(b => src === b || b.contains(src));
     }
 
-    /** A note is not a window, so keyboard focus needs an explicit grab on click. */
-    _focusText() {
-        if (this._grabbed) return;
-        this._grabbed = true;
-        this._grabHelper.grab({
-            actor: this.actor,
-            focus: this._text.actor,
-            onUngrab: () => { this._grabbed = false; },
-        });
+    /**
+     * A note is not a window, so keyboard focus needs an explicit grab on click. The
+     * application that had focus is told it lost it, so its own caret and selection go inactive.
+     * @param {number} [y]  stage y of the click; below the text puts the caret at the end
+     */
+    _focusText(y) {
+        if (!this._grabbed) {
+            this._grabbed = true;
+            this._grabHelper.grab({
+                actor: this.actor,
+                focus: this._text.widget,
+                onUngrab: () => { this._grabbed = false; },
+            });
+            global.display.unset_input_focus(global.get_current_time());
+        }
         this._text.focus();
+        if (y !== undefined) {
+            const [, top] = this._text.widget.get_transformed_position();
+            if (y > top + this._text.widget.height) this._text.actor.set_cursor_position(-1);
+        }
     }
 
     // Teardown --------------------------------------------------------------------
