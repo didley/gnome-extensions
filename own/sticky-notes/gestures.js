@@ -7,14 +7,18 @@ import GLib from 'gi://GLib';
  * The shell has its own pan/edge-drag gestures on the stage (overview and workspace
  * swipes). By default, whichever gesture recognises first cancels the others, and
  * theirs cancel ours partway through a drag (mostly vertical ones). Let ours and
- * theirs recognise side by side.
+ * theirs recognise side by side. Pass `alongside` for widgets that have gestures of
+ * their own that ours must not cancel (a text field's click and selection handling).
  * @param {Clutter.Gesture} gesture
+ * @param {Clutter.Actor[]} [alongside]
  */
-function coexistWithShell(gesture) {
-    for (const other of global.stage.get_actions()) {
-        if (other instanceof Clutter.Gesture && other !== gesture) {
-            gesture.can_not_cancel(other);
-            other.can_not_cancel(gesture);
+function coexist(gesture, alongside = []) {
+    for (const holder of [global.stage, ...alongside]) {
+        for (const other of holder.get_actions()) {
+            if (other instanceof Clutter.Gesture && other !== gesture) {
+                gesture.can_not_cancel(other);
+                other.can_not_cancel(gesture);
+            }
         }
     }
 }
@@ -22,12 +26,12 @@ function coexistWithShell(gesture) {
 /**
  * Click gesture on `actor`.
  * @param {Clutter.Actor} actor
- * @param {{button?: number, clicks?: number, onPress?: boolean,
+ * @param {{button?: number, clicks?: number, onPress?: boolean, alongside?: Clutter.Actor[],
  *          shouldHandle?: (event: Clutter.Event) => boolean,
  *          onClick: (gesture: Clutter.ClickGesture) => void}} opts
  *   onPress: fire as soon as the button goes down instead of on release.
  */
-export function addClick(actor, {button = Clutter.BUTTON_PRIMARY, clicks = 1, onPress = false, shouldHandle, onClick}) {
+export function addClick(actor, {button = Clutter.BUTTON_PRIMARY, clicks = 1, onPress = false, alongside = [], shouldHandle, onClick}) {
     const gesture = new Clutter.ClickGesture();
     gesture.set_required_button(button);
     gesture.set_n_clicks_required(clicks);
@@ -35,7 +39,7 @@ export function addClick(actor, {button = Clutter.BUTTON_PRIMARY, clicks = 1, on
     if (shouldHandle) gesture.connect('should-handle-sequence', (g, event) => shouldHandle(event));
     gesture.connect('recognize', () => onClick(gesture));
     actor.add_action(gesture);
-    coexistWithShell(gesture);
+    coexist(gesture, alongside);
     return gesture;
 }
 
@@ -96,7 +100,7 @@ export function addDrag(actor, {grabActor = actor, shouldHandle, onBegin, onMove
     pan.connect('end', () => onEnd?.());
     pan.connect('cancel', () => onEnd?.());
     actor.add_action(pan);
-    coexistWithShell(pan);
+    coexist(pan);
     return pan;
 }
 

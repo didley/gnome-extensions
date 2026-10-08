@@ -2,15 +2,13 @@ import Clutter from 'gi://Clutter';
 import St from 'gi://St';
 import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
-import Shell from 'gi://Shell';
 import Pango from 'gi://Pango';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js';
-import * as GrabHelper from 'resource:///org/gnome/shell/ui/grabHelper.js';
 
 import {colorPair, nextColor} from './colors.js';
 import {clampPosition, clampSize} from './geometry.js';
-import {noteTitle, firstLine} from './textutil.js';
+import {noteTitle, firstLine, lineBounds} from './textutil.js';
 import {addClick, addDrag} from './gestures.js';
 import {DoubleClick} from './doubleclick.js';
 import {addTooltip} from './tooltip.js';
@@ -31,6 +29,8 @@ export class Note {
         this.data = data;
         this._cleanups = [];
         this._headerClicks = new DoubleClick();
+        this._bodyClicks = new DoubleClick();
+        this._hasFocus = false;
         this._onChrome = false;
 
         this._build();
@@ -141,26 +141,25 @@ export class Note {
         });
         this._body.set_child(box);
 
-        // A note is not a window, so keyboard focus needs an explicit grab on click.
-        // actionMode NORMAL keeps shell shortcuts (Alt+Tab, workspace switching) working while
-        // the note has focus; the default (NONE) disables them for the duration of the grab.
-        this._grabHelper = new GrabHelper.GrabHelper(this.actor, {actionMode: Shell.ActionMode.NORMAL});
-        // Switching to another window (Alt+Tab) ends the note's keyboard grab, so typing goes
-        // to that window. A null focus window is just the grab itself taking focus: ignore it.
+        // Another window taking focus (Alt+Tab, clicking an app) ends the note's keyboard focus.
         const focusId = global.display.connect('notify::focus-window', () => {
-            if (this._grabbed && global.display.focus_window)
-                this._grabHelper.ungrab({actor: this.actor});
+            if (this._hasFocus && global.display.focus_window) this._hasFocus = false;
         });
         this._cleanups.push(() => global.display.disconnect(focusId));
-        // On the whole body, not just the text widget: an empty note's text is only one line tall.
-        addClick(this._body, {onPress: true, onClick: g => { this.raise(); this._focusText(g.get_coords_abs().y); }});
+        addClick(this._body, {onPress: true, alongside: [this._text.widget, this._text.actor], onClick: g => {
+            const {x, y} = g.get_coords_abs();
+            this.raise();
+            this._focusText();
+            this._placeCaretIfMissed(x, y);
+        }});
         addClick(this._body, {
             button: Clutter.BUTTON_SECONDARY,
             onPress: true,
+            alongside: [this._text.widget, this._text.actor],
             onClick: g => {
                 const {x, y} = g.get_coords_abs();
                 this.raise();
-                this._focusText(y);
+                this._focusText(); // keep the selection: the menu acts on it
                 this._text.menu.open(x, y);
             },
         });
@@ -283,24 +282,35 @@ export class Note {
     }
 
     /**
-     * A note is not a window, so keyboard focus needs an explicit grab on click. The
-     * application that had focus is told it lost it, so its own caret and selection go inactive.
-     * @param {number} [y]  stage y of the click; below the text puts the caret at the end
+     * A note is not a window, so the application that had focus has to be told it lost it
+     * (its caret and selection go inactive), and keys then go to the shell's key focus: the
+     * note's text. There's deliberately no modal grab here: that would stop the shell seeing
+     * touchpad swipes and other gestures for as long as a note is focused.
      */
-    _focusText(y) {
-        if (!this._grabbed) {
-            this._grabbed = true;
-            this._grabHelper.grab({
-                actor: this.actor,
-                focus: this._text.widget,
-                onUngrab: () => { this._grabbed = false; },
-            });
+    _focusText() {
+        if (!this._hasFocus) {
+            this._hasFocus = true;
             global.display.unset_input_focus(global.get_current_time());
         }
         this._text.focus();
-        if (y !== undefined) {
-            const [, top] = this._text.widget.get_transformed_position();
-            if (y > top + this._text.widget.height) this._text.actor.set_cursor_position(-1);
+    }
+
+    /**
+     * Clutter.Text only takes clicks over the area its text occupies, so a click to the right
+     * of a line, or below the text, lands on the entry around it and would do nothing. Handle
+     * it as a normal text field does: put the caret at the end of that line (or of the text),
+     * and select the line on a double-click.
+     */
+    _placeCaretIfMissed(x, y) {
+        const t = this._text.actor;
+        if (global.stage.get_actor_at_pos(Clutter.PickMode.REACTIVE, x, y) === t) return; // handled natively
+        const [, rx, ry] = t.transform_stage_point(x, y);
+        const pos = ry > t.height ? -1 : t.coords_to_position(rx, ry);
+        if (this._bodyClicks.press(GLib.get_monotonic_time() / 1000)) {
+            const {start, end} = lineBounds(this._text.text, pos);
+            t.set_selection(start, end);
+        } else {
+            t.set_selection(pos, pos);
         }
     }
 
@@ -311,7 +321,6 @@ export class Note {
         const safe = fn => { try { fn(); } catch (e) { console.error(`[Sticky Notes] destroy: ${e}`); } };
         safe(() => this._cleanups.forEach(c => c()));
         safe(() => this._text?.destroy());
-        safe(() => this._grabHelper?.ungrab({actor: this.actor}));
         safe(() => { if (this._onChrome) Main.layoutManager.removeChrome(this.actor); });
         safe(() => this.actor.destroy());
     }

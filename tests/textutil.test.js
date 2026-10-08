@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {firstLine, noteTitle, selectionRows} from '../own/sticky-notes/textutil.js';
+import {firstLine, noteTitle, selectionRows, lineBounds} from '../own/sticky-notes/textutil.js';
 
 test('firstLine skips blank lines and trims', () => {
     assert.equal(firstLine('\n  \n  hello world  \nsecond'), 'hello world');
@@ -41,4 +41,22 @@ test('selectionRows: a selection across lines gives one rectangle per line', () 
 test('selectionRows: an empty selection draws nothing', () => {
     assert.deepEqual(selectionRows([{x: 10, y: 0, h: 16}]), []);
     assert.deepEqual(selectionRows([]), []);
+});
+
+test('lineBounds finds the line around a position', () => {
+    const text = 'one\ntwo words\nthree';
+    assert.deepEqual(lineBounds(text, 5), {start: 4, end: 13});   // inside "two words"
+    assert.deepEqual(lineBounds(text, 0), {start: 0, end: 3});
+    assert.deepEqual(lineBounds(text, 3), {start: 0, end: 3});    // end of line 1
+    assert.deepEqual(lineBounds(text, 14), {start: 14, end: 19}); // start of last line
+});
+
+test('lineBounds: -1 and out-of-range mean the end of the text', () => {
+    assert.deepEqual(lineBounds('ab\ncd', -1), {start: 3, end: 5});
+    assert.deepEqual(lineBounds('ab\ncd', 99), {start: 3, end: 5});
+    assert.deepEqual(lineBounds('', -1), {start: 0, end: 0});
+});
+
+test('lineBounds counts characters, not UTF-16 units', () => {
+    assert.deepEqual(lineBounds('a🙂b\nc', 1), {start: 0, end: 3});
 });

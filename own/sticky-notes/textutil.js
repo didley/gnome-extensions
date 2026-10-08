@@ -41,3 +41,17 @@ export function selectionRows(points) {
     });
     return rows.filter(r => r.x2 > r.x1).map(({x1, x2, y, h}) => ({x1, x2, y, h}));
 }
+
+/**
+ * Start and end (character positions) of the line containing `pos`. A negative or
+ * out-of-range `pos` means the end of the text, as Clutter.Text uses -1 for it.
+ */
+export function lineBounds(text, pos) {
+    const chars = [...(text ?? '')];
+    const p = pos < 0 || pos > chars.length ? chars.length : pos;
+    let start = p;
+    while (start > 0 && chars[start - 1] !== '\n') start--;
+    let end = p;
+    while (end < chars.length && chars[end] !== '\n') end++;
+    return {start, end};
+}
