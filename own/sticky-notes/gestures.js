@@ -3,6 +3,22 @@
 import Clutter from 'gi://Clutter';
 
 /**
+ * The shell has its own pan/edge-drag gestures on the stage (overview and workspace
+ * swipes). By default, whichever gesture recognises first cancels the others, and
+ * theirs cancel ours partway through a drag (mostly vertical ones). Let ours and
+ * theirs recognise side by side.
+ * @param {Clutter.Gesture} gesture
+ */
+function coexistWithShell(gesture) {
+    for (const other of global.stage.get_actions()) {
+        if (other instanceof Clutter.Gesture && other !== gesture) {
+            gesture.can_not_cancel(other);
+            other.can_not_cancel(gesture);
+        }
+    }
+}
+
+/**
  * Click gesture on `actor`.
  * @param {Clutter.Actor} actor
  * @param {{button?: number, clicks?: number, onPress?: boolean,
@@ -18,6 +34,7 @@ export function addClick(actor, {button = Clutter.BUTTON_PRIMARY, clicks = 1, on
     if (shouldHandle) gesture.connect('should-handle-sequence', (g, event) => shouldHandle(event));
     gesture.connect('recognize', () => onClick(gesture));
     actor.add_action(gesture);
+    coexistWithShell(gesture);
     return gesture;
 }
 
@@ -45,6 +62,8 @@ export function addDrag(actor, {shouldHandle, onBegin, onMove, onEnd}) {
     pan.connect('end', () => onEnd?.());
     pan.connect('cancel', () => onEnd?.());
     actor.add_action(pan);
+
+    coexistWithShell(pan);
     return pan;
 }
 
