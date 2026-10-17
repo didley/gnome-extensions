@@ -30,7 +30,7 @@ Patched extensions are not mine: credit and licences stay with the upstream auth
 - Header: `+` new note, colour cycle on the left; minimize, collapse and delete on the right (GNOME window-control order). Buttons appear on hover and have tooltips.
 - Drag the header to move, drag the corner `◢` to resize.
 - Minimized notes live in the panel icon's menu; click one to bring it back. The panel icon creates your first note.
-- Full text editing: copy / cut / paste / select all, undo / redo (`Ctrl+Z`, `Ctrl+Shift+Z`), and a right-click menu.
+- Text editing: copy / cut / paste / select all, undo / redo (`Ctrl+Z`, `Ctrl+Shift+Z`), and a right-click menu. `Tab` / `Shift+Tab` indent and outdent (several lines at once if selected), `Enter` keeps the line's indent (and ends an indented block on a blank indented line), and `Alt+Up` / `Alt+Down` move lines.
 - Deleting a note with text asks for confirmation.
 - Notes are saved to `~/.local/share/sticky-notes@didley.dev/notes.json`.
 

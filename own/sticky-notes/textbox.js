@@ -4,9 +4,9 @@ import GLib from 'gi://GLib';
 import Pango from 'gi://Pango';
 import {History} from './history.js';
 import {TextMenu} from './textmenu.js';
+import {shiftLines, moveLines, enterEdit} from './textutil.js';
 import {addKeys} from './gestures.js';
 
-/** @type {[number, number, number, number]} */
 /**
  * The editable text of a note: a multi-line St.Entry, the same widget the shell
  * uses for its own text fields, so the caret, selection colours and
@@ -30,7 +30,6 @@ export class NoteText {
         });
         const t = this.actor = this.widget.get_clutter_text();
         t.set_single_line_mode(false);
-        t.set_activatable(false); // Enter inserts a new line
         t.set_line_wrap(true);
         t.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR);
         t.set_text(initial);
@@ -40,6 +39,11 @@ export class NoteText {
             if (!this._applying) this._history.record(text, GLib.get_monotonic_time() / 1000);
             onChange(text);
         });
+        // Enter is "activate", not "insert a newline", so the new line (and its indent) goes
+        // in as one edit of ours: when the widget inserts the newline itself it moves the
+        // caret after any change we make in reaction to it.
+        t.set_activatable(true);
+        t.connect('activate', () => this._onEnter());
         addKeys(this.widget, (key, state) => this._onKey(key, state));
 
         this.menu = new TextMenu(this);
@@ -76,6 +80,58 @@ export class NoteText {
 
     selectAll() { this.actor.set_selection(0, -1); }
 
+    /** The selection (or caret) as character positions with start <= end. */
+    _range() {
+        const t = this.actor;
+        const len = [...this.text].length;
+        const caret = t.get_cursor_position();
+        const bound = t.get_selection_bound();
+        const a = caret < 0 ? len : caret;
+        const b = bound < 0 ? len : bound;
+        return a <= b ? [a, b] : [b, a];
+    }
+
+    /** Replace the whole text as one undoable edit, then select [start, end]. */
+    _replaceText(r) {
+        const t = this.actor;
+        t.set_text(r.text); // goes through 'text-changed', so it is one undo step
+        t.set_selection(r.start, r.end);
+    }
+
+    /** Tab / Shift+Tab. A selection over several lines indents them all; otherwise Tab types a tab character. */
+    _indent(outdent) {
+        const t = this.actor;
+        const [start, end] = this._range();
+        const spansLines = [...this.text].slice(start, end).includes('\n');
+
+        if (!outdent && !spansLines) {
+            t.delete_selection();
+            const pos = t.get_cursor_position();
+            t.insert_text('\t', pos);
+            t.set_cursor_position(pos < 0 ? -1 : pos + 1);
+            return;
+        }
+        const r = shiftLines(this.text, start, end, outdent);
+        if (r.text !== this.text) this._replaceText(r);
+    }
+
+    /** Enter: a new line that keeps the current line's indent (see enterEdit). */
+    _onEnter() {
+        const t = this.actor;
+        t.delete_selection();
+        const edit = enterEdit(this.text, t.get_cursor_position());
+        if (edit.remove) t.delete_text(...edit.remove);
+        t.insert_text(edit.insert, edit.at);
+        t.set_cursor_position(edit.caret);
+    }
+
+    /** Alt+Up / Alt+Down: move the current line (or the selected lines). */
+    _moveLines(dir) {
+        const [start, end] = this._range();
+        const r = moveLines(this.text, start, end, dir);
+        if (r) this._replaceText(r);
+    }
+
     undo() { this._show(this._history.undo(this.text)); }
     redo() { this._show(this._history.redo(this.text)); }
 
@@ -94,8 +150,21 @@ export class NoteText {
             this.menu.close();
             return true;
         }
-        if (!(state & Clutter.ModifierType.CONTROL_MASK)) return false;
         const shift = !!(state & Clutter.ModifierType.SHIFT_MASK);
+        const ctrl = !!(state & Clutter.ModifierType.CONTROL_MASK);
+
+        // Tab indents (Shift+Tab outdents) instead of moving focus; Ctrl+Tab is left for switching.
+        if ((key === Clutter.KEY_Tab || key === Clutter.KEY_ISO_Left_Tab) && !ctrl) {
+            this._indent(shift || key === Clutter.KEY_ISO_Left_Tab);
+            return true;
+        }
+        const alt = !!(state & Clutter.ModifierType.MOD1_MASK);
+
+        if (alt && !ctrl && (key === Clutter.KEY_Up || key === Clutter.KEY_Down)) {
+            this._moveLines(key === Clutter.KEY_Up ? -1 : 1);
+            return true;
+        }
+        if (!ctrl) return false;
 
         switch (key) {
         case Clutter.KEY_y: case Clutter.KEY_Y: this.redo(); break;

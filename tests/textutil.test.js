@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {firstLine, noteTitle, selectionRows, lineBounds} from '../own/sticky-notes/textutil.js';
+import {firstLine, noteTitle, selectionRows, lineBounds, shiftLines, indentBefore, moveLines, enterEdit} from '../own/sticky-notes/textutil.js';
 
 test('firstLine skips blank lines and trims', () => {
     assert.equal(firstLine('\n  \n  hello world  \nsecond'), 'hello world');
@@ -59,4 +59,93 @@ test('lineBounds: -1 and out-of-range mean the end of the text', () => {
 
 test('lineBounds counts characters, not UTF-16 units', () => {
     assert.deepEqual(lineBounds('a🙂b\nc', 1), {start: 0, end: 3});
+});
+
+test('shiftLines indents the caret line and moves the caret with it', () => {
+    assert.deepEqual(shiftLines('one\ntwo', 5, 5), {text: 'one\n\ttwo', start: 6, end: 6});
+});
+
+test('shiftLines indents every line a selection touches', () => {
+    const r = shiftLines('a\nb\nc\nd', 2, 5); // selects "b\nc"
+    assert.equal(r.text, 'a\n\tb\n\tc\nd');
+    assert.deepEqual([r.start, r.end], [3, 7]);
+});
+
+test('a selection ending just after a newline does not indent the next line', () => {
+    assert.equal(shiftLines('a\nb\nc', 0, 4).text, '\ta\n\tb\nc'); // "a\nb\n" selected
+});
+
+test('shiftLines outdent removes one tab or up to four spaces', () => {
+    assert.equal(shiftLines('\tone', 2, 2, true).text, 'one');
+    assert.equal(shiftLines('      two', 0, 0, true).text, '  two');
+    assert.equal(shiftLines('  x', 0, 0, true).text, 'x');
+    assert.equal(shiftLines('plain', 0, 0, true).text, 'plain'); // nothing to remove
+});
+
+test('outdent never moves the selection before its line', () => {
+    const r = shiftLines('\tab', 0, 0, true);
+    assert.deepEqual([r.text, r.start, r.end], ['ab', 0, 0]);
+});
+
+test('shiftLines handles non-BMP characters', () => {
+    assert.equal(shiftLines('🙂a\n🙂b', 0, 4).text, '\t🙂a\n\t🙂b');
+});
+
+test('indentBefore returns the leading whitespace of the caret line', () => {
+    assert.equal(indentBefore('\t  hello', 9), '\t  ');
+    assert.equal(indentBefore('a\n    b', 7), '    ');
+    assert.equal(indentBefore('plain', 3), '');
+    assert.equal(indentBefore('', -1), '');
+});
+
+test('indentBefore stops at the caret when it is inside the indent', () => {
+    assert.equal(indentBefore('      x', 2), '  ');
+});
+
+test('moveLines moves a line up and keeps the caret on it', () => {
+    const r = moveLines('one\ntwo\nthree', 5, 5, -1); // caret in "two"
+    assert.deepEqual(r, {text: 'two\none\nthree', start: 1, end: 1});
+});
+
+test('moveLines moves a line down', () => {
+    const r = moveLines('one\ntwo\nthree', 1, 1, 1); // caret in "one"
+    assert.deepEqual(r, {text: 'two\none\nthree', start: 5, end: 5});
+});
+
+test('moveLines moves every line a selection touches', () => {
+    const r = moveLines('a\nb\nc\nd', 2, 5, -1); // "b\nc" up past "a"
+    assert.equal(r.text, 'b\nc\na\nd');
+    assert.deepEqual([r.start, r.end], [0, 3]);
+});
+
+test('moveLines does nothing at the edges', () => {
+    assert.equal(moveLines('one\ntwo', 0, 0, -1), null);
+    assert.equal(moveLines('one\ntwo', 5, 5, 1), null);
+    assert.equal(moveLines('single', 2, 2, -1), null);
+});
+
+test('moveLines handles non-BMP characters', () => {
+    assert.equal(moveLines('🙂\nb', 3, 3, -1).text, 'b\n🙂');
+});
+
+
+test('enterEdit carries the indent of the line onto the new line', () => {
+    assert.deepEqual(enterEdit('    item', 8), {remove: null, at: 8, insert: '\n    ', caret: 13});
+    assert.deepEqual(enterEdit('plain', 5), {remove: null, at: 5, insert: '\n', caret: 6});
+});
+
+test('enterEdit in the middle of a line splits it and indents the rest', () => {
+    assert.deepEqual(enterEdit('  ab cd', 5), {remove: null, at: 5, insert: '\n  ', caret: 8});
+});
+
+test('enterEdit on a line that is only an indent clears it', () => {
+    assert.deepEqual(enterEdit('a\n    ', 6), {remove: [2, 6], at: 2, insert: '\n', caret: 3});
+});
+
+test('enterEdit on an empty line adds nothing', () => {
+    assert.deepEqual(enterEdit('a\n', 2), {remove: null, at: 2, insert: '\n', caret: 3});
+});
+
+test('enterEdit: -1 means the end of the text', () => {
+    assert.deepEqual(enterEdit('  x', -1), {remove: null, at: 3, insert: '\n  ', caret: 6});
 });
