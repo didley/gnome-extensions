@@ -138,8 +138,40 @@ export class Note {
             clip_to_allocation: true,
             // never scroll sideways: the text wraps to the note's width and fills it
             hscrollbar_policy: St.PolicyType.NEVER,
+            vscrollbar_policy: St.PolicyType.AUTOMATIC,
+            // the body must be able to shrink below the text's height, or it just grows
+            // past the note and there is nothing to scroll
+            style: 'min-height: 0;',
         });
         this._body.set_child(box);
+
+        // A multi-line entry reports about one line as its minimum height, so the scroll view
+        // squashes it to the viewport and there is nothing to scroll. Make its minimum the
+        // height of the wrapped text.
+        const t = this._text.actor;
+        const entry = this._text.widget;
+        let fitting = false;
+        const fit = () => {
+            if (fitting || !this._body) return;
+            const w = t.width;
+            if (w <= 0) return;
+            fitting = true;
+            try {
+                const [, nat] = t.get_preferred_height(w);
+                const node = entry.get_theme_node();
+                const pad = node.get_vertical_padding() +
+                    node.get_border_width(St.Side.TOP) + node.get_border_width(St.Side.BOTTOM);
+                entry.min_height = entry.natural_height = Math.ceil(nat + pad);
+            } finally { fitting = false; }
+        };
+        const refit = () => { GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => { try { fit(); } catch (e) { /* torn down */ } return GLib.SOURCE_REMOVE; }); };
+        const fitIds = [t.connect('text-changed', refit), t.connect('notify::width', refit)];
+        this._cleanups.push(() => fitIds.forEach(id => t.disconnect(id)));
+        refit();
+
+        // Keep the caret in view as it moves (typing, arrows, clicking).
+        const caretId = t.connect('cursor-changed', () => this._scrollToCaret(box));
+        this._cleanups.push(() => t.disconnect(caretId));
 
         // Another window taking focus (Alt+Tab, clicking an app) ends the note's keyboard focus.
         const focusId = global.display.connect('notify::focus-window', () => {
@@ -164,6 +196,19 @@ export class Note {
             },
         });
         return this._body;
+    }
+
+    _scrollToCaret(box) {
+        const adj = this._body.vadjustment ?? this._body.get_vscroll_bar().adjustment;
+        const t = this._text.actor;
+        const rect = t.get_cursor_rect?.();
+        if (!adj || !rect) return;
+        const [, ty] = t.get_transformed_position();
+        const [, by] = box.get_transformed_position();
+        const top = ty - by + rect.origin.y;
+        const bottom = top + rect.size.height;
+        if (top < adj.value) adj.value = top;
+        else if (bottom > adj.value + adj.page_size) adj.value = bottom - adj.page_size;
     }
 
     _buildFooter() {
